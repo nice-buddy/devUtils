@@ -29,6 +29,8 @@ pub struct HttpRequestPayload {
     #[serde(default)]
     pub body_type: String, // "none" | "raw" | "x-www-form-urlencoded" | "form-data" | "binary"
     #[serde(default)]
+    pub raw_type: Option<String>,
+    #[serde(default)]
     pub body_raw: Option<String>,
     #[serde(default)]
     pub form_data: Vec<KeyValueItem>,
@@ -90,29 +92,21 @@ pub async fn http_execute(
 
     let client = client_builder.build().map_err(|e| format!("初始化网络客户端失败: {}", e))?;
 
-    // 5. URL 处理与校验
+    // 5. URL 处理与校验及 Query 参数拼接
     let mut final_url = req.url.trim().to_string();
     if !final_url.starts_with("http://") && !final_url.starts_with("https://") {
         final_url = format!("http://{}", final_url);
     }
 
-    // 若 URL 不含 Query 参数且 params 存在有效键值对，则拼接 Query 参数
-    if !final_url.contains('?') && !req.params.is_empty() {
-        let mut query_pairs = Vec::new();
-        for p in &req.params {
-            if p.enabled && !p.key.trim().is_empty() {
-                query_pairs.push((p.key.trim(), p.value.trim()));
-            }
-        }
-        if !query_pairs.is_empty() {
-            if let Ok(mut url_obj) = reqwest::Url::parse(&final_url) {
-                for (k, v) in query_pairs {
-                    url_obj.query_pairs_mut().append_pair(k, v);
-                }
-                final_url = url_obj.to_string();
-            }
+    let mut url_obj = reqwest::Url::parse(&final_url)
+        .map_err(|e| format!("无效 URL 地址 '{}': {}", final_url, e))?;
+
+    for p in &req.params {
+        if p.enabled && !p.key.trim().is_empty() {
+            url_obj.query_pairs_mut().append_pair(p.key.trim(), p.value.trim());
         }
     }
+    final_url = url_obj.to_string();
 
     // 6. HTTP 方法
     let method = match req.method.to_uppercase().as_str() {
@@ -130,13 +124,31 @@ pub async fn http_execute(
     let mut req_builder = client.request(method, &final_url);
 
     // 7. 自定义请求头注入
+    let mut has_content_type = false;
     for h in &req.headers {
         if h.enabled && !h.key.trim().is_empty() {
+            if h.key.trim().eq_ignore_ascii_case("content-type") {
+                has_content_type = true;
+            }
             let header_name = reqwest::header::HeaderName::from_bytes(h.key.trim().as_bytes())
                 .map_err(|e| format!("非法请求头名称 '{}': {}", h.key, e))?;
             let header_value = reqwest::header::HeaderValue::from_str(&h.value)
                 .map_err(|e| format!("非法请求头数值 '{}': {}", h.value, e))?;
             req_builder = req_builder.header(header_name, header_value);
+        }
+    }
+
+    // 若未显式设置 Content-Type 且为 Raw JSON 请求，自动补全 application/json
+    if !has_content_type && req.body_type == "raw" {
+        let is_json = req.raw_type.as_deref() == Some("json")
+            || req.body_raw.as_ref().map(|b| {
+                let trimmed = b.trim();
+                (trimmed.starts_with('{') && trimmed.ends_with('}'))
+                    || (trimmed.starts_with('[') && trimmed.ends_with(']'))
+            }).unwrap_or(false);
+
+        if is_json {
+            req_builder = req_builder.header(reqwest::header::CONTENT_TYPE, "application/json");
         }
     }
 

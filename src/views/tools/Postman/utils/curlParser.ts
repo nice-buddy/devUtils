@@ -171,45 +171,146 @@ export function parseCurl(curlCommand: string): ParsedCurl {
   }
 }
 
-/**
- * 将当前请求参数导出为 cURL 命令行
- */
-export function exportToCurl(req: {
+export interface ExportCurlOptions {
   method: string
   url: string
   headers?: Record<string, string> | KeyValuePair[]
   body?: string
   bodyType?: string
-}): string {
+  auth?: {
+    type: string
+    bearerToken?: string
+    basicUsername?: string
+    basicPassword?: string
+    apiKeyName?: string
+    apiKeyValue?: string
+    apiKeyAddTo?: 'header' | 'query'
+  }
+  formData?: KeyValuePair[]
+  urlencodedData?: KeyValuePair[]
+}
+
+/**
+ * 将当前请求参数导出为 cURL 命令行
+ */
+export function exportToCurl(req: ExportCurlOptions): string {
   const parts: string[] = ['curl']
 
   const method = (req.method || 'GET').toUpperCase()
   parts.push(`-X ${method}`)
 
-  const url = req.url || 'http://localhost'
+  let url = req.url || 'http://localhost'
+
+  // 处理 Query 参数型 API Key
+  const auth = req.auth
+  const authType = auth?.type?.toLowerCase()
+  if (
+    authType === 'apikey' &&
+    auth?.apiKeyAddTo === 'query' &&
+    auth.apiKeyName?.trim() &&
+    auth.apiKeyValue?.trim()
+  ) {
+    const k = encodeURIComponent(auth.apiKeyName.trim())
+    const v = encodeURIComponent(auth.apiKeyValue.trim())
+    const sep = url.includes('?') ? '&' : '?'
+    url = `${url}${sep}${k}=${v}`
+  }
+
   parts.push(`"${url}"`)
 
   // 处理请求头
+  const headerList: { key: string; value: string }[] = []
   if (req.headers) {
     if (Array.isArray(req.headers)) {
       for (const h of req.headers) {
         if (h.enabled !== false && h.key && h.key.trim()) {
-          parts.push(`-H "${h.key.trim()}: ${h.value || ''}"`)
+          headerList.push({ key: h.key.trim(), value: h.value || '' })
         }
       }
     } else {
       for (const [k, v] of Object.entries(req.headers)) {
         if (k && k.trim()) {
-          parts.push(`-H "${k.trim()}: ${v || ''}"`)
+          headerList.push({ key: k.trim(), value: v || '' })
         }
       }
     }
   }
 
-  // 处理 Body
-  if (method !== 'GET' && method !== 'HEAD' && req.body && req.body.trim()) {
-    const rawBody = req.body.trim()
-    // 对单引号进行转义处理
+  // 注入鉴权请求头
+  if (authType === 'bearer' && auth?.bearerToken?.trim()) {
+    headerList.push({
+      key: 'Authorization',
+      value: `Bearer ${auth.bearerToken.trim()}`
+    })
+  } else if (
+    authType === 'basic' &&
+    (auth?.basicUsername?.trim() || auth?.basicPassword?.trim())
+  ) {
+    const u = auth.basicUsername || ''
+    const p = auth.basicPassword || ''
+    const encoded =
+      typeof btoa === 'function'
+        ? btoa(`${u}:${p}`)
+        : Buffer.from(`${u}:${p}`).toString('base64')
+    headerList.push({
+      key: 'Authorization',
+      value: `Basic ${encoded}`
+    })
+  } else if (
+    authType === 'apikey' &&
+    auth?.apiKeyAddTo !== 'query' &&
+    auth?.apiKeyName?.trim() &&
+    auth?.apiKeyValue?.trim()
+  ) {
+    headerList.push({
+      key: auth.apiKeyName.trim(),
+      value: auth.apiKeyValue.trim()
+    })
+  }
+
+  // 序列化 Body
+  let bodyPayload = req.body || ''
+  if (!bodyPayload) {
+    if (req.bodyType === 'x-www-form-urlencoded' && req.urlencodedData?.length) {
+      const activePairs = req.urlencodedData.filter(
+        (item) => item.enabled !== false && item.key?.trim()
+      )
+      if (activePairs.length > 0) {
+        bodyPayload = activePairs
+          .map(
+            (p) =>
+              `${encodeURIComponent(p.key.trim())}=${encodeURIComponent(p.value || '')}`
+          )
+          .join('&')
+        if (!headerList.some((h) => h.key.toLowerCase() === 'content-type')) {
+          headerList.push({
+            key: 'Content-Type',
+            value: 'application/x-www-form-urlencoded'
+          })
+        }
+      }
+    } else if (req.bodyType === 'form-data' && req.formData?.length) {
+      const activePairs = req.formData.filter(
+        (item) => item.enabled !== false && item.key?.trim()
+      )
+      if (activePairs.length > 0) {
+        bodyPayload = activePairs
+          .map(
+            (p) =>
+              `${encodeURIComponent(p.key.trim())}=${encodeURIComponent(p.value || '')}`
+          )
+          .join('&')
+      }
+    }
+  }
+
+  for (const h of headerList) {
+    parts.push(`-H "${h.key}: ${h.value}"`)
+  }
+
+  // 处理 Body 输出
+  if (method !== 'GET' && method !== 'HEAD' && bodyPayload && bodyPayload.trim()) {
+    const rawBody = bodyPayload.trim()
     const escaped = rawBody.replace(/'/g, `'\\''`)
     parts.push(`-d '${escaped}'`)
   }

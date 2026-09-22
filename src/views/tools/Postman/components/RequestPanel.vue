@@ -112,6 +112,29 @@ function removeHeader(index: number) {
   emit('change')
 }
 
+function syncBulkHeadersToHeaders() {
+  const lines = bulkHeadersText.value.split('\n')
+  const newHeaders: KeyValueItem[] = []
+  for (const line of lines) {
+    const idx = line.indexOf(':')
+    if (idx > -1) {
+      newHeaders.push({
+        key: line.slice(0, idx).trim(),
+        value: line.slice(idx + 1).trim(),
+        enabled: true
+      })
+    } else if (line.trim()) {
+      newHeaders.push({
+        key: line.trim(),
+        value: '',
+        enabled: true
+      })
+    }
+  }
+  props.modelValue.headers = newHeaders.length > 0 ? newHeaders : [{ key: '', value: '', enabled: true }]
+  emit('change')
+}
+
 function toggleBulkHeaders() {
   isBulkHeaders.value = !isBulkHeaders.value
   if (isBulkHeaders.value) {
@@ -122,26 +145,7 @@ function toggleBulkHeaders() {
       .join('\n')
   } else {
     // 解析多行文本
-    const lines = bulkHeadersText.value.split('\n')
-    const newHeaders: KeyValueItem[] = []
-    for (const line of lines) {
-      const idx = line.indexOf(':')
-      if (idx > -1) {
-        newHeaders.push({
-          key: line.slice(0, idx).trim(),
-          value: line.slice(idx + 1).trim(),
-          enabled: true
-        })
-      } else if (line.trim()) {
-        newHeaders.push({
-          key: line.trim(),
-          value: '',
-          enabled: true
-        })
-      }
-    }
-    props.modelValue.headers = newHeaders.length > 0 ? newHeaders : [{ key: '', value: '', enabled: true }]
-    emit('change')
+    syncBulkHeadersToHeaders()
   }
 }
 
@@ -411,6 +415,7 @@ onBeforeUnmount(() => {
           </div>
           <textarea
             v-model="bulkHeadersText"
+            @input="syncBulkHeadersToHeaders"
             placeholder="Content-Type: application/json&#10;Authorization: Bearer token"
             class="flex-1 w-full p-2 text-xs font-mono rounded border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-200 outline-none resize-none focus:border-indigo-500"
           ></textarea>

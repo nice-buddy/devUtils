@@ -55,6 +55,7 @@ async fn test_http_execute_and_history_logging() {
             },
         ],
         body_type: "raw".to_string(),
+        raw_type: Some("json".to_string()),
         body_raw: Some("{\"hello\":\"world\"}".to_string()),
         form_data: vec![],
         urlencoded_data: vec![],
@@ -103,6 +104,7 @@ async fn test_http_execute_file_not_found_errors() {
         headers: vec![],
         params: vec![],
         body_type: "binary".to_string(),
+        raw_type: None,
         body_raw: None,
         form_data: vec![],
         urlencoded_data: vec![],
@@ -117,3 +119,70 @@ async fn test_http_execute_file_not_found_errors() {
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("二进制文件不存在"));
 }
+
+#[tokio::test]
+async fn test_http_execute_query_params_and_content_type_autoinject() {
+    // 启动接收并回显请求路径及请求头的本地微服务
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buf = [0u8; 2048];
+                let n = socket.read(&mut buf).await.unwrap_or(0);
+                let req_text = String::from_utf8_lossy(&buf[..n]);
+                // 回显请求的第一行及全部内容
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    req_text.len(),
+                    req_text
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
+            });
+        }
+    });
+
+    let conn = Connection::open_in_memory().await.unwrap();
+    devutils_lib::db::migrations::run_migrations(&conn).await.unwrap();
+    let state = DbState(Arc::new(conn));
+
+    let app = tauri::test::mock_app();
+    app.manage(state);
+    let tauri_state = app.state::<DbState>();
+
+    // 构造已有 ?existing=1 的 URL，并追加 params
+    let req = HttpRequestPayload {
+        method: "POST".to_string(),
+        url: format!("http://127.0.0.1:{}/api?existing=1", port),
+        headers: vec![], // 不传入 Content-Type
+        params: vec![
+            KeyValueItem {
+                key: "extra".to_string(),
+                value: "val2".to_string(),
+                enabled: true,
+                item_type: None,
+            },
+        ],
+        body_type: "raw".to_string(),
+        raw_type: Some("json".to_string()),
+        body_raw: Some("{\"auto\":\"inject\"}".to_string()),
+        form_data: vec![],
+        urlencoded_data: vec![],
+        binary_file_path: None,
+        timeout_ms: Some(5000),
+        ignore_ssl: Some(true),
+        follow_redirects: Some(true),
+        proxy: None,
+    };
+
+    let resp = http_execute(req, tauri_state).await.expect("Request should succeed");
+    assert_eq!(resp.status, 200);
+    // 验证请求行保留了 existing=1 且正确追加了 extra=val2
+    assert!(resp.body.contains("existing=1"));
+    assert!(resp.body.contains("extra=val2"));
+    // 验证自动补全了 Content-Type: application/json
+    assert!(resp.body.to_lowercase().contains("content-type: application/json"));
+}
+

@@ -182,18 +182,34 @@ async function handleSend() {
   response.value = null
 
   try {
-    // 1. 替换环境变量
+    // 1. 替换环境变量与 URL 处理
     const finalUrl = resolveVariables(request.value.url.trim())
+    let cleanUrl = finalUrl
+    const hasParamsInTable = request.value.params.some((p) => p.key.trim())
+    if (hasParamsInTable) {
+      const qIdx = cleanUrl.indexOf('?')
+      if (qIdx > -1) {
+        cleanUrl = cleanUrl.substring(0, qIdx)
+      }
+    }
 
-    // 2. 收集请求头并注入鉴权头
+    // 2. 收集请求头与 Query 参数并注入鉴权信息
     const finalHeaders: KeyValueItem[] = request.value.headers.map((h) => ({
       ...h,
       key: resolveVariables(h.key),
       value: resolveVariables(h.value)
     }))
 
+    const finalParams: KeyValueItem[] = request.value.params.map((p) => ({
+      ...p,
+      key: resolveVariables(p.key),
+      value: resolveVariables(p.value)
+    }))
+
+    const authType = request.value.auth.type?.toLowerCase()
+
     // 处理 Auth 注入
-    if (request.value.auth.type === 'bearer' && request.value.auth.bearerToken.trim()) {
+    if (authType === 'bearer' && request.value.auth.bearerToken.trim()) {
       const token = resolveVariables(request.value.auth.bearerToken.trim())
       finalHeaders.push({
         key: 'Authorization',
@@ -201,7 +217,7 @@ async function handleSend() {
         enabled: true
       })
     } else if (
-      request.value.auth.type === 'basic' &&
+      authType === 'basic' &&
       (request.value.auth.basicUsername || request.value.auth.basicPassword)
     ) {
       const u = resolveVariables(request.value.auth.basicUsername)
@@ -213,7 +229,7 @@ async function handleSend() {
         enabled: true
       })
     } else if (
-      request.value.auth.type === 'apikey' &&
+      authType === 'apikey' &&
       request.value.auth.apiKeyName.trim() &&
       request.value.auth.apiKeyValue.trim()
     ) {
@@ -221,6 +237,8 @@ async function handleSend() {
       const v = resolveVariables(request.value.auth.apiKeyValue.trim())
       if (request.value.auth.apiKeyAddTo === 'header') {
         finalHeaders.push({ key: k, value: v, enabled: true })
+      } else if (request.value.auth.apiKeyAddTo === 'query') {
+        finalParams.push({ key: k, value: v, enabled: true })
       }
     }
 
@@ -230,14 +248,11 @@ async function handleSend() {
     // 4. 组装发往 Rust 后端 reqwest 的 payload
     const payload = {
       method: request.value.method,
-      url: finalUrl,
+      url: cleanUrl,
       headers: finalHeaders,
-      params: request.value.params.map((p) => ({
-        ...p,
-        key: resolveVariables(p.key),
-        value: resolveVariables(p.value)
-      })),
+      params: finalParams,
       body_type: request.value.bodyType,
+      raw_type: request.value.rawType,
       body_raw: finalBodyRaw,
       form_data: request.value.formData.map((f) => ({
         ...f,
@@ -415,7 +430,11 @@ async function handleCopyAsCurl() {
       method: request.value.method,
       url: request.value.url,
       headers: request.value.headers,
-      body: request.value.bodyType === 'raw' ? request.value.bodyRaw : undefined
+      body: request.value.bodyType === 'raw' ? request.value.bodyRaw : undefined,
+      bodyType: request.value.bodyType,
+      auth: request.value.auth,
+      formData: request.value.formData,
+      urlencodedData: request.value.urlencodedData
     })
     await navigator.clipboard.writeText(curl)
     message.success('已将当前请求生成 cURL 命令并复制到剪贴板')

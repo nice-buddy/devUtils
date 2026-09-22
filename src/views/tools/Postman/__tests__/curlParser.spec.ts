@@ -69,4 +69,80 @@ describe('cURL 命令行解析与导出', () => {
     })
     expect(exported).not.toContain('Disabled-Header')
   })
+
+  it('导出 cURL 支持 Bearer 与 Basic 鉴权', () => {
+    const bearerExport = exportToCurl({
+      method: 'GET',
+      url: 'https://api.example.com/me',
+      auth: {
+        type: 'bearer',
+        bearerToken: 'secret-token-123'
+      }
+    })
+    expect(bearerExport).toContain('-H "Authorization: Bearer secret-token-123"')
+
+    const basicExport = exportToCurl({
+      method: 'GET',
+      url: 'https://api.example.com/me',
+      auth: {
+        type: 'basic',
+        basicUsername: 'admin',
+        basicPassword: 'password123'
+      }
+    })
+    const expectedBase64 = Buffer.from('admin:password123').toString('base64')
+    expect(basicExport).toContain(`-H "Authorization: Basic ${expectedBase64}"`)
+  })
+
+  it('导出 cURL 支持 API Key 注入 Header 与 Query', () => {
+    const headerExport = exportToCurl({
+      method: 'GET',
+      url: 'https://api.example.com/data',
+      auth: {
+        type: 'apiKey',
+        apiKeyName: 'X-API-KEY',
+        apiKeyValue: 'my-key-value',
+        apiKeyAddTo: 'header'
+      }
+    })
+    expect(headerExport).toContain('-H "X-API-KEY: my-key-value"')
+
+    const queryExport = exportToCurl({
+      method: 'GET',
+      url: 'https://api.example.com/data?page=1',
+      auth: {
+        type: 'apiKey',
+        apiKeyName: 'api_key',
+        apiKeyValue: 'query-key-123',
+        apiKeyAddTo: 'query'
+      }
+    })
+    expect(queryExport).toContain('https://api.example.com/data?page=1&api_key=query-key-123')
+  })
+
+  it('导出 cURL 正确序列化 urlencoded 与 form-data 请求体至 -d', () => {
+    const urlencodedExport = exportToCurl({
+      method: 'POST',
+      url: 'https://api.example.com/form',
+      bodyType: 'x-www-form-urlencoded',
+      urlencodedData: [
+        { key: 'user name', value: 'alice&bob', enabled: true },
+        { key: 'role', value: 'admin', enabled: true },
+        { key: 'ignored', value: 'skip', enabled: false }
+      ]
+    })
+    expect(urlencodedExport).toContain(`-d 'user%20name=alice%26bob&role=admin'`)
+    expect(urlencodedExport).toContain('-H "Content-Type: application/x-www-form-urlencoded"')
+
+    const formExport = exportToCurl({
+      method: 'POST',
+      url: 'https://api.example.com/upload',
+      bodyType: 'form-data',
+      formData: [
+        { key: 'field1', value: 'val1', enabled: true },
+        { key: 'field2', value: 'val2', enabled: false }
+      ]
+    })
+    expect(formExport).toContain(`-d 'field1=val1'`)
+  })
 })

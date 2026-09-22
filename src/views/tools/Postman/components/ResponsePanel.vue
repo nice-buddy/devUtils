@@ -7,6 +7,7 @@ import { EditorState, Compartment } from '@codemirror/state'
 import { useThemeStore } from '@/stores/themeStore'
 import HtmlPreviewIframe from './HtmlPreviewIframe.vue'
 import { PostmanResponseModel } from '../types'
+import { formatResponseBody, LARGE_RESPONSE_THRESHOLD_BYTES } from '../utils/responseFormatter'
 
 const props = defineProps<{
   response: PostmanResponseModel | null
@@ -19,10 +20,27 @@ const themeStore = useThemeStore()
 
 const activeTab = ref<'pretty' | 'raw' | 'preview' | 'headers'>('pretty')
 
+// Large Response Threshold Guard (> 1MB)
+const isLargePayload = computed(() => {
+  if (!props.response) return false
+  return (
+    props.response.sizeBytes > LARGE_RESPONSE_THRESHOLD_BYTES ||
+    props.response.body.length > LARGE_RESPONSE_THRESHOLD_BYTES
+  )
+})
+
 // CodeMirror for Pretty & Raw Response
 const editorEl = ref<HTMLDivElement | null>(null)
 let editorView: EditorView | null = null
 const themeCompartment = new Compartment()
+const langCompartment = new Compartment()
+
+function getLangExtension() {
+  if (isLargePayload.value || activeTab.value !== 'pretty') {
+    return []
+  }
+  return json()
+}
 
 function getEditorTheme(isDark: boolean) {
   return EditorView.theme(
@@ -53,19 +71,7 @@ function getEditorTheme(isDark: boolean) {
 
 const formattedPrettyText = computed(() => {
   if (!props.response?.body) return ''
-  const trimmed = props.response.body.trim()
-  if (
-    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
-    (trimmed.startsWith('[') && trimmed.endsWith(']'))
-  ) {
-    try {
-      const parsed = JSON.parse(trimmed)
-      return JSON.stringify(parsed, null, 2)
-    } catch {
-      return props.response.body
-    }
-  }
-  return props.response.body
+  return formatResponseBody(props.response.body, isLargePayload.value)
 })
 
 function initResponseEditor() {
@@ -79,7 +85,7 @@ function initResponseEditor() {
       doc: initialDoc,
       extensions: [
         basicSetup,
-        json(),
+        langCompartment.of(getLangExtension()),
         themeCompartment.of(getEditorTheme(themeStore.isDark)),
         EditorView.editable.of(false),
         EditorState.readOnly.of(true)
@@ -97,7 +103,8 @@ function updateEditorContent() {
   const content =
     activeTab.value === 'pretty' ? formattedPrettyText.value : props.response?.body || ''
   editorView.dispatch({
-    changes: { from: 0, to: editorView.state.doc.length, insert: content }
+    changes: { from: 0, to: editorView.state.doc.length, insert: content },
+    effects: langCompartment.reconfigure(getLangExtension())
   })
 }
 
@@ -268,6 +275,19 @@ onBeforeUnmount(() => {
         >
           复制
         </button>
+      </div>
+    </div>
+
+    <!-- Sub Warning Bar (Large Payload Guard > 1MB) -->
+    <div
+      v-if="response && isLargePayload"
+      class="h-7 px-3 bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-900/60 flex items-center justify-between text-xs text-amber-700 dark:text-amber-300 shrink-0"
+    >
+      <div class="flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <span>响应体积超过 1MB，大文本保护已生效（禁用重度 AST 语法树解析并展示原始文本以保障流畅）</span>
       </div>
     </div>
 
