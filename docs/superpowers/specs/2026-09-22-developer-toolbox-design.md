@@ -1,6 +1,6 @@
 # Tauri 2 + Vue 3 跨平台开发者工具箱（DevUtils）需求与工程落地设计规范
 
-**文档版本**：v1.2.0（生产级冻结版）  
+**文档版本**：v1.2.1（终审冻结版）  
 **更新日期**：2026-09-22  
 **目标平台**：macOS (Apple Silicon & Intel) / Windows 10 & 11 (x64 & ARM64)  
 **核心技术栈**：Tauri 2 + Rust + Vue 3 + TypeScript + Naive UI + CodeMirror 6 + Tailwind CSS + tokio-rusqlite  
@@ -23,13 +23,14 @@
   * 5 个常用工具 Tab 并发工作状态：**< 180MB**。
   * 具备超过 5 个 Tab 时的 LRU 实例销毁与 DOM 彻底卸载机制。
 * **大文本承载能力**：
-  * 100,000 行（约 5MB~10MB）JSON / 文本能够正常载入、平滑虚拟滚动、支持全文搜索，**绝不发生 UI 白屏崩溃或主进程卡死**。
+  * 100,000 行（约 5MB~10MB）JSON / 文本能够正常载入、平滑虚拟滚动、支持全文搜索，**内存波动增量 < 60MB，绝不发生 UI 白屏崩溃或主进程卡死**。
 * **数据精度原则**：
   * 超过 JavaScript `Number.MAX_SAFE_INTEGER`（9007199254740991）的长整型数值（如 19 位雪花 ID、订单号）全程使用无损 Tokenizer 保持原文字符串。
   * **纳秒级时间戳（19位）**：因超出 JS `Date` 及标准整型安全范围，系统全程以 **纯字符串（String）** 形式透传与计算，严禁转为 JS Number 导致末位失真。
 * **隐私与安全性**：
   * 纯本地离线运行，零埋点、零遥测、零数据外流。
-  * 敏感凭证（Postman Token、私钥）优先接入 OS 原生 Keyring，兜底采用本地派生密钥 AES-256-GCM 加密存储。
+  * 敏感凭证（Postman Token、私钥）优先接入 OS 原生 Keyring（Keychain / Windows Credential Manager）；
+  * **渲染沙箱隔离（XSS 防御）**：Postman HTML 响应预览与 Markdown HTML 预览均运行在 `<iframe sandbox="allow-same-origin" srcdoc="...">` 隔离沙箱中，**禁用 `allow-scripts`**，彻底阻断恶意脚本执行与 Tauri IPC 提权调用。
 
 ---
 
@@ -46,6 +47,7 @@ flowchart TD
         Tailwind["Tailwind CSS 原子化样式"]
         PiniaStore["Pinia 全局状态与用户配置"]
         WebWorker["Web Worker (轻量纯计算/正则/小文本转换)"]
+        SandboxFrame["不可信 HTML 隔离沙箱 (Iframe Sandbox)"]
     end
 
     subgraph TauriIPC["Tauri 2 IPC 通信层"]
@@ -58,9 +60,9 @@ flowchart TD
         ReqwestClient["Reqwest HTTP 客户端 (无 CORS/系统代理/忽略证书)"]
         WSEngine["tokio-tungstenite (WebSocket 长连接与心跳)"]
         DiffEngine["similar 库 (高性能行级与字符级差异比对)"]
-        HashEngine["分块流式哈希引擎 (1~4MB Buffer + AtomicBool 取消)"]
+        HashEngine["分块流式哈希引擎 (2MB Buffer + AtomicBool 取消)"]
         DB["tokio-rusqlite 异步数据库事务 (独立工作线程)"]
-        Keyring["keyring-rs / 安全密钥存储"]
+        Keyring["keyring-rs / machine-uid 凭据保全"]
     end
 
     Frontend <--> TauriIPC
@@ -73,12 +75,12 @@ flowchart TD
 3. **SQLite 异步驱动**：选用 **`tokio-rusqlite`**，在独立专用线程中顺序执行 SQLite 读写事务，彻底避免阻塞 Tokio 异步网络与 IPC 线程池。
 4. **单文件哈希与流式计算原理**：
    * 单文件 SHA-256 计算为串行依赖更新，采用 `std::fs::File` 以 **2MB 固定 Buffer** 进行分块串行读取并更新 Hasher 状态。
-   * 内存开销恒定在 **< 30MB**；通过 `Arc<AtomicBool>` 作为全局取消标志位，每读完一个 Chunk 校验一次标志位，实现 200ms 内快速终止。
+   * 物理内存开销恒定在 **< 30MB**；通过 `Arc<AtomicBool>` 作为全局取消标志位，每读完一个 Chunk 校验一次标志位，在 **300ms 容差窗口内** 安全释放文件句柄并退出任务。
    * 进度通过 `tauri::ipc::Channel` 节流推送至前端（每 100ms 最多汇报一次进度百分比与瞬时速度）。
-5. **统一大文本处理三级策略**：
+5. **统一大文本与大报文处理三级策略**：
    * **轻量区（< 1MB）**：纯前端/Worker 零延迟就地处理，CodeMirror 启用完整折叠、括号匹配与内联装饰。
    * **中量区（1MB ~ 5MB）**：前端就地处理，CodeMirror 自动切换为“轻量模式”（关闭非视口深层折叠计算，保留纯语法高亮与虚拟滚动）。
-   * **重量区（> 5MB）**：前端调用 Rust 异步命令分配 `task_id`，利用原生线程后台计算；前端编辑器以纯文本分块虚拟渲染，支持检索，避免主线程挂起。
+   * **重量区（> 5MB）**：**（含 Postman 超大响应报文）** 前端调用 Rust 异步命令分配 `task_id` 后台分片处理；前端编辑器复用“重量区”分块虚拟滚动渲染，仅渲染可视视口行，杜绝全量 DOM 挂载导致主线程卡死。
 6. **多 Tab 管理与 LRU 内存卸载策略**：
    * 默认最多保持 **5 个活跃 Tab** 处于 Vue `<KeepAlive>` 状态，切换无延迟。
    * 打开超过 5 个 Tab 时，基于 **LRU（最近最少使用）算法** 自动将最久未访问的 Tab 从 `<KeepAlive>` 中踢出：
@@ -155,6 +157,8 @@ gantt
   * cURL 互通：支持从剪贴板一键导入 cURL 命令并解析；支持一键导出为 cURL 命令行与各语言代码。
 * **响应与历史**：
   * 状态码、耗时（ms）、体积（KB）；Body 支持 Pretty、Raw、图片/HTML 预览及快速搜索。
+  * **超大响应保护**：响应体 >5MB 自动复用“重量区”分块虚拟滚动渲染，杜绝卡死。
+  * **HTML 预览沙箱**：通过 `<iframe sandbox="allow-same-origin">` 渲染不可信 HTML，禁用脚本执行，杜绝 XSS。
   * 请求历史自动写入 SQLite（保留最近 500 条）；支持收藏至目录结构。
 
 ### 4.4 信息编码与流式哈希（Encoding & Hash Studio）
@@ -166,7 +170,7 @@ gantt
 * **超大文件哈希秒算（单文件串行流式 + 可取消）**：
   * 允许拖入 10GB+ 超大本地文件。
   * Rust 端采用 2MB 固定 Buffer 分块流式读取与更新 Hasher 状态，物理内存恒定在 **< 30MB**。
-  * 前端展示百分比进度条与实时处理速度，配备一键“取消”按钮（基于 `AtomicBool` 标志位在 200ms 内安全释放文件句柄）。
+  * 前端展示百分比进度条与实时处理速度，配备一键“取消”按钮（基于 `AtomicBool` 标志位在 300ms 容差窗口内安全释放文件句柄）。
   * 输出结果与系统命令行 `shasum -a 256` 绝对一致。
 
 ### 4.5 时间戳与本地化时间（Timestamp & Cron Hub）
@@ -187,7 +191,7 @@ gantt
 ## 5. 第二期（P0 开发者高频）与第三期（P1）规划规格
 
 ### 5.1 第二期（P0）新增高频模块规格
-1. **YAML / Properties / JSON 三向互转（刚需回归）**：
+1. **YAML / Properties / JSON 三向互转（刚需）**：
    * 支持三栏实时联动编辑（JSON ↔ YAML ↔ Properties），防抖双向生成。
    * 支持多层嵌套对象与 Properties 风格点分扁平键（如 `spring.datasource.url`）无损双向转换。
    * 数组兼容：支持 `servers[0].url` 与 `servers.0.url` 两种主流解析模式。
@@ -213,7 +217,7 @@ gantt
 * **JWT 解析与调试**：三段式色彩高亮、Claims 过期时间倒计时雷达、签名校验（HS256/RS256）、Payload 篡改反向重签。
 * **Excel/CSV 文本转 JSON/SQL**：粘贴板 TSV/文件上传，智能表头识别与类型推导，多方言（MySQL/PG/SQLite/Oracle）批量 Insert 脚本生成。
 * **图片与 Base64 / SVG 处理**：剪贴板粘图、Base64 还原本地保存、SVG 代码压缩优化与 DataURL 生成。
-* **Markdown / HTML 互转与实时预览**：CodeMirror 6 与渲染区精准双向同步滚动、GFM 规范、语法高亮与导出。
+* **Markdown / HTML 互转与实时预览**：CodeMirror 6 与渲染区精准双向同步滚动、GFM 规范、语法高亮与导出，HTML 预览同样采用 `iframe sandbox` 隔离不可信脚本。
 * **正则表达式测试**：实时匹配变色高亮、捕获组分色明细、替换实时预览、内置中文开发者高频规则库（手机号、身份证、统一社会信用代码、银行卡）。
 * **UUID / Snowflake / 常见 Mock 数据生成**：UUID v1/v4/v7、NanoID、雪花算法，以及常见测试用 Mock 数据（中文姓名、测试手机号、模拟身份证、随机地址）。
 * **X.509 证书解析**、**二维码生成与解码**、**颜色转换与拾取（HEX ↔ RGB ↔ HSL）**。
@@ -265,7 +269,7 @@ CREATE TABLE IF NOT EXISTS app_favorites (
 );
 CREATE INDEX IF NOT EXISTS idx_favorites_tool ON app_favorites(tool_id);
 
--- 4. 通用最近使用记录表（每个工具保留最新 50 条，超出自动裁剪）
+-- 4. 通用最近使用记录表
 CREATE TABLE IF NOT EXISTS app_recents (
     id TEXT PRIMARY KEY,
     tool_id TEXT NOT NULL,
@@ -274,6 +278,19 @@ CREATE TABLE IF NOT EXISTS app_recents (
     accessed_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_recents_tool_accessed ON app_recents(tool_id, accessed_at DESC);
+
+-- 触发器：app_recents 每个工具超过 50 条时自动修剪老数据
+CREATE TRIGGER IF NOT EXISTS trg_prune_app_recents
+AFTER INSERT ON app_recents
+BEGIN
+    DELETE FROM app_recents
+    WHERE tool_id = NEW.tool_id
+      AND id NOT IN (
+          SELECT id FROM app_recents
+          WHERE tool_id = NEW.tool_id
+          ORDER BY accessed_at DESC LIMIT 50
+      );
+END;
 
 -- 5. Postman 环境变量表
 CREATE TABLE IF NOT EXISTS http_environments (
@@ -336,9 +353,8 @@ END;
 
 ### 6.3 凭据与敏感数据安全策略
 * **首选方案**：调用操作系统原生凭据库（macOS Keychain / Windows Credential Manager，基于 `keyring-rs` 驱动）。
-* **Fallback 降级策略（Machine-bound Key）**：
-  * 若系统凭证库不可用，应用提取本机的硬件稳定特征（主板 UUID + CPU ID）结合初次安装时生成的全局随机 Salt，通过 PBKDF2 派生出 256 位 AES-GCM 密钥。
-  * 密钥存储位置：操作系统标准用户保护目录（macOS: `~/Library/Application Support/DevUtils/.salt`，Windows: `%APPDATA%\DevUtils\.salt`）。
+* **Fallback 降级策略**：
+  * 若系统凭证库不可用，不重复造硬件指纹轮子，改用成熟标准的 `machine-uid` crate 获取设备唯一标识，结合应用初次启动生成的全局 Salt，通过 PBKDF2 派生出 256 位 AES-GCM 密钥。
   * 若用户在异机恢复 SQLite 导致解密失败，系统进行静默保护并提示“凭证已在旧设备加密，请重新输入更新”，坚决杜绝因解密异常引起程序崩溃或敏感数据明文外泄。
 
 ---
@@ -389,7 +405,7 @@ END;
 | **TC-01** | 长整数与纳秒精度 | 输入包含 19 位雪花 ID 及 19 位纳秒时间戳的文本，进行格式化、转换与导出，断言数值 100% 精确一致，无末位截断或科学计数法变形。 |
 | **TC-02** | 原生 CORS 穿透 | 在 Postman 模块向配置严格 CORS 校验的外部服务发送 POST 请求，断言能成功接收 200 响应报文与 Headers，无跨域拦截异常。 |
 | **TC-03** | 忽略自签名证书 | 在 Postman 中开启“忽略证书错误”，向自签名本地 HTTPS 服务发起请求，断言能成功握手并正常返回。 |
-| **TC-04** | 大文件哈希与取消 | 拖入 5GB 大文件执行 SHA-256 计算，验证进度条平滑递增、UI 不卡顿；中途点击“取消”，断言在 200ms 内释放文件句柄并终止计算；完整计算后结果与系统 `shasum -a 256` 字符串一致。 |
-| **TC-05** | 10万行 JSON 承载力 | 载入 100,000 行（约 6MB）格式化 JSON 文本，滚动浏览、折叠节点、执行全局搜索，断言内存无泄漏，无白屏或无响应警告。 |
+| **TC-04** | 大文件哈希与取消 | 拖入 5GB 大文件执行 SHA-256 计算，验证进度条平滑递增、UI 不卡顿；中途点击“取消”，断言在 **300ms 容差窗口内** 释放文件句柄并终止计算；完整计算后结果与系统 `shasum -a 256` 字符串一致。 |
+| **TC-05** | 10万行 JSON 承载力 | 载入 100,000 行（约 6MB）格式化 JSON 文本，滚动浏览、折叠节点、执行全局搜索，断言内存增量波动 < 60MB，无白屏或无响应警告。 |
 | **TC-06** | 空载常驻内存基准 | 启动应用静置 1 分钟，测量进程实际物理驻留内存（RSS），断言满足：macOS < 90MB，Windows < 130MB。 |
-| **TC-07** | 数据库迁移与修剪 | 插入 505 条测试历史记录，断言 `http_history` 自动修剪并稳定维持在最新的 500 条记录；重启应用断言快照与配置自愈。 |
+| **TC-07** | 数据库迁移与修剪 | 1. 插入 505 条测试请求日志，断言触发器自动生效，`http_history` 稳定维持在 500 条；<br>2. 连续向同一工具插入 55 条最近记录，断言 `app_recents` 触发器自动修剪至 50 条；<br>3. 重启应用断言数据库迁移检查通过。 |
