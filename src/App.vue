@@ -16,6 +16,7 @@ import JsonSuite from '@/views/tools/JsonSuite/JsonSuite.vue'
 import DiffViewer from '@/views/tools/DiffViewer/DiffViewer.vue'
 import Postman from '@/views/tools/Postman/Postman.vue'
 import EncodingHash from '@/views/tools/EncodingHash/EncodingHash.vue'
+import TimestampCron from '@/views/tools/TimestampCron/TimestampCron.vue'
 import { useTabStore, TabItem } from '@/stores/tabStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCommandPalette } from '@/composables/useCommandPalette'
@@ -44,6 +45,9 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'encoding-hash' || toolId === 'encoding_hash') {
     return EncodingHash
+  }
+  if (toolId === 'timestamp-cron' || toolId === 'timestamp_cron') {
+    return TimestampCron
   }
   return ToolPlaceholder
 }
