@@ -12,6 +12,7 @@ import Sidebar from '@/components/layout/Sidebar.vue'
 import TabBar from '@/components/layout/TabBar.vue'
 import CommandPalette from '@/components/common/CommandPalette.vue'
 import ToolPlaceholder from '@/views/tools/ToolPlaceholder.vue'
+import JsonSuite from '@/views/tools/JsonSuite/JsonSuite.vue'
 import { useTabStore, TabItem } from '@/stores/tabStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCommandPalette } from '@/composables/useCommandPalette'
@@ -28,9 +29,10 @@ const activeTab = computed(() => {
 // Dynamic component registry & wrapper cache for KeepAlive per tab instance
 const componentCache = new Map<string, any>()
 
-function resolveBaseComponent(_toolId: string) {
-  // As tools are implemented in subsequent tasks (JsonSuite, DiffViewer, Postman, etc.),
-  // they can be mapped here. Fallback to ToolPlaceholder.
+function resolveBaseComponent(toolId: string) {
+  if (toolId === 'json-suite' || toolId === 'json_suite') {
+    return JsonSuite
+  }
   return ToolPlaceholder
 }
 
