@@ -14,6 +14,7 @@ import CommandPalette from '@/components/common/CommandPalette.vue'
 import ToolPlaceholder from '@/views/tools/ToolPlaceholder.vue'
 import JsonSuite from '@/views/tools/JsonSuite/JsonSuite.vue'
 import DiffViewer from '@/views/tools/DiffViewer/DiffViewer.vue'
+import Postman from '@/views/tools/Postman/Postman.vue'
 import { useTabStore, TabItem } from '@/stores/tabStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCommandPalette } from '@/composables/useCommandPalette'
@@ -36,6 +37,9 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'diff-viewer' || toolId === 'diff_viewer') {
     return DiffViewer
+  }
+  if (toolId === 'postman') {
+    return Postman
   }
   return ToolPlaceholder
 }

@@ -26,6 +26,7 @@ pub fn run() {
             db::db_execute,
             db::db_query,
             commands::diff::diff_text,
+            commands::http::http_execute,
         ])
         .run(tauri::generate_context!())
         .expect("运行 DevUtils 发生异常");
