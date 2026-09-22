@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineComponent, h, watch } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, h, watch } from 'vue'
 import {
   NConfigProvider,
   NMessageProvider,
@@ -11,16 +11,18 @@ import {
 import Sidebar from '@/components/layout/Sidebar.vue'
 import TabBar from '@/components/layout/TabBar.vue'
 import CommandPalette from '@/components/common/CommandPalette.vue'
-import ToolPlaceholder from '@/views/tools/ToolPlaceholder.vue'
-import JsonSuite from '@/views/tools/JsonSuite/JsonSuite.vue'
-import DiffViewer from '@/views/tools/DiffViewer/DiffViewer.vue'
-import Postman from '@/views/tools/Postman/Postman.vue'
-import EncodingHash from '@/views/tools/EncodingHash/EncodingHash.vue'
-import TimestampCron from '@/views/tools/TimestampCron/TimestampCron.vue'
 import { useTabStore, TabItem } from '@/stores/tabStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 import { TOOLS, ToolDefinition } from '@/types/tool'
+
+// Tool views are code-split so cold start does not pay for tools the user has not opened.
+const ToolPlaceholder = defineAsyncComponent(() => import('@/views/tools/ToolPlaceholder.vue'))
+const JsonSuite = defineAsyncComponent(() => import('@/views/tools/JsonSuite/JsonSuite.vue'))
+const DiffViewer = defineAsyncComponent(() => import('@/views/tools/DiffViewer/DiffViewer.vue'))
+const Postman = defineAsyncComponent(() => import('@/views/tools/Postman/Postman.vue'))
+const EncodingHash = defineAsyncComponent(() => import('@/views/tools/EncodingHash/EncodingHash.vue'))
+const TimestampCron = defineAsyncComponent(() => import('@/views/tools/TimestampCron/TimestampCron.vue'))
 
 const tabStore = useTabStore()
 const themeStore = useThemeStore()

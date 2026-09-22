@@ -8,7 +8,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "test:benchmark": "vitest run --config vitest.benchmark.config.ts"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.1",

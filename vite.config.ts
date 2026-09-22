@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { configDefaults, defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
@@ -13,5 +13,9 @@ export default defineConfig({
   server: {
     port: 1420,
     strictPort: true
+  },
+  test: {
+    // CI tier: heavy local benchmarks under tests/manual run via `npm run test:benchmark`.
+    exclude: [...configDefaults.exclude, 'tests/manual/**']
   }
 })
