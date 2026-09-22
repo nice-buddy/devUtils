@@ -1,0 +1,37 @@
+[package]
+name = "devutils"
+version = "0.1.0"
+description = "DevUtils 跨平台桌面开发者工具箱"
+edition = "2021"
+
+[lib]
+name = "devutils_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = ["tray-icon"] }
+tauri-plugin-window-state = "2.0.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["raw_value"] }
+tokio = { version = "1.40", features = ["full"] }
+tokio-rusqlite = "0.6.0"
+rusqlite = { version = "0.32", features = ["bundled"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "socks", "multipart", "cookies"] }
+similar = { version = "2.6", features = ["inline", "bytes"] }
+sha2 = "0.10"
+sha3 = "0.10"
+md-5 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.9"
+croner = "2.1"
+keyring = { version = "3.0", optional = true }
+machine-uid = "0.5"
+uuid = { version = "1.10", features = ["v4", "v7", "fast-rng"] }
+
+[dev-dependencies]
+tempfile = "3.14"
