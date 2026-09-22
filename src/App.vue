@@ -15,6 +15,7 @@ import ToolPlaceholder from '@/views/tools/ToolPlaceholder.vue'
 import JsonSuite from '@/views/tools/JsonSuite/JsonSuite.vue'
 import DiffViewer from '@/views/tools/DiffViewer/DiffViewer.vue'
 import Postman from '@/views/tools/Postman/Postman.vue'
+import EncodingHash from '@/views/tools/EncodingHash/EncodingHash.vue'
 import { useTabStore, TabItem } from '@/stores/tabStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCommandPalette } from '@/composables/useCommandPalette'
@@ -40,6 +41,9 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'postman') {
     return Postman
+  }
+  if (toolId === 'encoding-hash' || toolId === 'encoding_hash') {
+    return EncodingHash
   }
   return ToolPlaceholder
 }

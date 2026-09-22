@@ -19,6 +19,7 @@ pub fn run() {
                 db::init_db(&handle).await
             })?;
             app.manage(db_state);
+            app.manage(commands::hash::HashCancelManager::new());
 
             Ok(())
         })
@@ -27,6 +28,9 @@ pub fn run() {
             db::db_query,
             commands::diff::diff_text,
             commands::http::http_execute,
+            commands::hash::compute_file_hash,
+            commands::hash::cancel_file_hash,
+            commands::hash::compute_text_hash,
         ])
         .run(tauri::generate_context!())
         .expect("运行 DevUtils 发生异常");
