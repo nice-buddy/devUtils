@@ -97,6 +97,7 @@ function onTimestampInputChange() {
     extraNanoseconds.value = extraNs
   } catch (err: any) {
     conversionError.value = err.message || '无效的时间戳'
+    datePickerValue.value = null
   }
 }
 
@@ -118,21 +119,29 @@ function onUnitChange(newUnit: TimeUnit) {
 
 // When user selects date in DatePicker
 function onDatePickerChange(val: number | null) {
-  if (val === null) {
+  if (val === null || isNaN(val)) {
     timestampInput.value = ''
     extraNanoseconds.value = '000000'
+    datePickerValue.value = null
     return
   }
   datePickerValue.value = val
   const d = new Date(val)
-  let baseTs = dateToTimestamp(d, timestampUnit.value)
-  // preserve extra nanoseconds if in us/ns
-  if (timestampUnit.value === 'ns' && extraNanoseconds.value !== '000000') {
-    const prefix = baseTs.slice(0, -6)
-    baseTs = `${prefix}${extraNanoseconds.value}`
-  } else if (timestampUnit.value === 'us' && extraNanoseconds.value !== '000000') {
-    const prefix = baseTs.slice(0, -3)
-    baseTs = `${prefix}${extraNanoseconds.value.slice(0, 3)}`
+  if (isNaN(d.getTime())) {
+    timestampInput.value = ''
+    datePickerValue.value = null
+    return
+  }
+  const msBig = BigInt(val)
+  let baseTs: string
+  if (timestampUnit.value === 'ns') {
+    const extra = BigInt(extraNanoseconds.value || '0')
+    baseTs = (msBig * 1_000_000n + extra).toString()
+  } else if (timestampUnit.value === 'us') {
+    const extra = BigInt((extraNanoseconds.value || '000').slice(0, 3))
+    baseTs = (msBig * 1_000n + extra).toString()
+  } else {
+    baseTs = dateToTimestamp(d, timestampUnit.value)
   }
   timestampInput.value = baseTs
   conversionError.value = ''
@@ -149,8 +158,10 @@ function fillCurrentTimestamp() {
 
 // Derived formats & Unix commands
 const derivedDate = computed(() => {
-  if (datePickerValue.value === null) return null
-  return new Date(datePickerValue.value)
+  if (datePickerValue.value === null || isNaN(datePickerValue.value)) return null
+  const d = new Date(datePickerValue.value)
+  if (isNaN(d.getTime())) return null
+  return d
 })
 
 const dateFormats = computed(() => {
@@ -253,7 +264,7 @@ function selectCronPreset(preset: string) {
 }
 
 function formatCountdown(targetMs: number): string {
-  const now = Date.now()
+  const now = currentClockDate.value.getTime()
   const diffMs = targetMs - now
   if (diffMs <= 0) return '已执行 / 正在触发'
   const diffSec = Math.floor(diffMs / 1000)
@@ -305,10 +316,13 @@ onUnmounted(() => {
 })
 
 // Snapshot persistence
+const effectiveTabId = computed(() => props.tabId || tabStore.activeTabId)
+
 watch(
   [activeTab, timestampInput, timestampUnit, timezoneBaseDate, cronPattern, cronTimezone, cronCount],
   () => {
-    tabStore.updateTabSnapshot(props.tabId, {
+    if (!effectiveTabId.value) return
+    tabStore.updateTabSnapshot(effectiveTabId.value, {
       activeTab: activeTab.value,
       timestampInput: timestampInput.value,
       timestampUnit: timestampUnit.value,

@@ -39,6 +39,11 @@ describe('Timestamp Converter (BigInt Lossless)', () => {
     expect(() => convertTimestamp('', 's', 'ms')).toThrow()
   })
 
+  it('throws on out-of-range timestamps exceeding Date limits', () => {
+    // 19 digits passed as seconds (far beyond JS Date limit of ~100,000,000 days)
+    expect(() => timestampToDate('1727000000123456789', 's')).toThrow(/超出有效日期范围/)
+  })
+
   it('splits nanosecond timestamp to Date and sub-millisecond extraNs', () => {
     const { date, extraNs } = timestampToDate(nano19, 'ns')
     expect(date.getTime()).toBe(1727000000123)
@@ -79,6 +84,15 @@ describe('Format Date Matrix & Unix Commands', () => {
     expect(matrix.local).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)
   })
 
+  it('safely handles invalid/NaN dates without throwing RangeError', () => {
+    const invalidDate = new Date(NaN)
+    const matrix = formatDateMatrix(invalidDate)
+    expect(matrix.iso).toBe('')
+    expect(matrix.rfc2822).toBe('')
+    expect(matrix.utc).toBe('')
+    expect(matrix.local).toBe('')
+  })
+
   it('generates macOS and Linux Unix date commands', () => {
     const cmds = generateUnixDateCommands('1727000000')
 
@@ -109,6 +123,12 @@ describe('Chinese Cron Explanation', () => {
     const explanation = explainCronChinese('0 30 9 * * 1-5')
     expect(explanation).toContain('09:30:00')
     expect(explanation).toContain('周一至周五')
+  })
+
+  it('handles multi-value comma-separated cron fields', () => {
+    const explanation = explainCronChinese('0,15,30,45 9 * * *')
+    expect(explanation).toContain('00,15,30,45')
+    expect(explanation).toContain('09')
   })
 
   it('returns a fallback message for invalid cron', () => {

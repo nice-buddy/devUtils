@@ -39,6 +39,9 @@ export function timestampToDate(ts: string, unit: TimeUnit): { date: Date; extra
 
   const extraNs = absRem.toString().padStart(6, '0')
   const date = new Date(Number(ms))
+  if (isNaN(date.getTime())) {
+    throw new Error(`时间戳超出有效日期范围: "${ts}"`)
+  }
 
   return { date, extraNs }
 }
@@ -47,6 +50,9 @@ export function timestampToDate(ts: string, unit: TimeUnit): { date: Date; extra
  * 将 Date 转换为指定单位的时间戳字符串
  */
 export function dateToTimestamp(date: Date, toUnit: TimeUnit): string {
+  if (isNaN(date.getTime())) {
+    return '0'
+  }
   const ms = BigInt(date.getTime())
   const ns = ms * 1_000_000n
   const target = ns / FACTORS[toUnit]
@@ -68,6 +74,9 @@ function pad(n: number): string {
  * 格式化多重标准日期格式矩阵
  */
 export function formatDateMatrix(date: Date): DateFormats {
+  if (isNaN(date.getTime())) {
+    return { iso: '', rfc2822: '', utc: '', local: '' }
+  }
   const iso = date.toISOString()
   const rfc2822 = date.toUTCString()
   const utc = `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())} UTC`
@@ -177,10 +186,24 @@ export function explainCronChinese(pattern: string): string {
   } else if (hourPart === '*' && minPart === '*') {
     descSegments.push('每分钟')
   } else {
-    const h = hourPart === '*' ? '每小时' : pad(parseInt(hourPart, 10) || 0)
-    const m = minPart === '*' ? '每分钟' : pad(parseInt(minPart, 10) || 0)
+    const formatPart = (p: string, unit: string) => {
+      if (p === '*') return `每${unit}`
+      if (p.includes(',')) {
+        return p
+          .split(',')
+          .map(sub => {
+            const num = parseInt(sub.trim(), 10)
+            return isNaN(num) ? sub : pad(num)
+          })
+          .join(',')
+      }
+      const num = parseInt(p, 10)
+      return isNaN(num) ? p : pad(num)
+    }
+    const h = formatPart(hourPart, '小时')
+    const m = formatPart(minPart, '分钟')
     if (secPart) {
-      const s = secPart === '*' ? '每秒' : pad(parseInt(secPart, 10) || 0)
+      const s = formatPart(secPart, '秒')
       descSegments.push(`${h}:${m}:${s}`)
     } else {
       descSegments.push(`${h}:${m}`)
@@ -254,6 +277,13 @@ function getZoneOffsetStr(date: Date, timeZone?: string): string {
   return 'UTC'
 }
 
+function parseOffsetMinutes(offStr: string): number {
+  const match = offStr.match(/([+-])(\d{2}):(\d{2})/)
+  if (!match) return 0
+  const sign = match[1] === '-' ? -1 : 1
+  return sign * (parseInt(match[2], 10) * 60 + parseInt(match[3], 10))
+}
+
 function isDaylightSaving(date: Date, timeZone?: string): boolean {
   if (!timeZone || timeZone === 'UTC' || timeZone === 'Asia/Shanghai' || timeZone === 'Asia/Tokyo') {
     return false
@@ -266,17 +296,18 @@ function isDaylightSaving(date: Date, timeZone?: string): boolean {
         timeZone: timeZone === 'Local' ? undefined : timeZone,
         timeZoneName: 'longOffset'
       })
-      const part = formatter.formatToParts(d).find(p => p.type === 'timeZoneName')?.value ?? ''
-      return part
+      return formatter.formatToParts(d).find(p => p.type === 'timeZoneName')?.value ?? ''
     }
     const curOffset = getOffset(date)
     const janOffset = getOffset(jan)
     const julOffset = getOffset(jul)
 
-    // In DST, offset differs from standard winter offset
-    // For northern hemisphere, standard offset is January; for southern hemisphere, July.
     if (janOffset !== julOffset) {
-      return curOffset !== janOffset
+      const curMin = parseOffsetMinutes(curOffset)
+      const janMin = parseOffsetMinutes(janOffset)
+      const julMin = parseOffsetMinutes(julOffset)
+      const standardMin = Math.min(janMin, julMin)
+      return curMin > standardMin
     }
   } catch {
     // fallback
