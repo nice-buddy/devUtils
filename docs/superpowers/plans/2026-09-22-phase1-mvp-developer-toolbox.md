@@ -22,7 +22,7 @@
 
 ---
 
-### 任务 1：项目工程脚手架搭建与基础设施完备配置
+### Task 1: 任务 1 - 项目工程脚手架搭建与基础设施完备配置
 
 **涉及文件：**
 - 新建：`index.html`
@@ -321,7 +321,7 @@ git commit -m "chore: 初始化脚手架，补全 multipart/cookies/tempfile/cro
 
 ---
 
-### 任务 2：SQLite 异步引擎落地：状态管理与 IPC 命令（tokio-rusqlite）
+### Task 2: 任务 2 - SQLite 异步引擎落地：状态管理与 IPC 命令（tokio-rusqlite）
 
 **涉及文件：**
 - 新建：`src-tauri/src/db/mod.rs`
@@ -434,7 +434,7 @@ git commit -m "feat(db): 实现 DbState 挂载、数据库版本迁移与触发�
 
 ---
 
-### 任务 3：工作台主体：多实例标签页管理（LRU 淘汰）与应用内 Cmd+K
+### Task 3: 任务 3 - 工作台主体：多实例标签页管理（LRU 淘汰）与应用内 Cmd+K
 
 **涉及文件：**
 - 新建：`src/stores/tabStore.ts`
@@ -572,7 +572,7 @@ git commit -m "feat(ui): 实现支持同工具多开的 Tab 实例管理、LRU �
 
 ---
 
-### 任务 4：MVP 工具 1 - JSON 深度套件（基于 json-bigint AST 级无损保护、容错修复与 JSONPath）
+### Task 4: 任务 4 - MVP 工具 1 - JSON 深度套件（基于 json-bigint AST 级无损保护、容错修复与 JSONPath）
 
 **涉及文件：**
 - 新建：`src/views/tools/JsonSuite/JsonSuite.vue`
@@ -680,7 +680,7 @@ git commit -m "feat(tool): 基于 json-bigint 实现大整数无损保护、容�
 
 ---
 
-### 任务 5：MVP 工具 2 - 通用文本与 JSON 语义对比工具（直接测试命令）
+### Task 5: 任务 5 - MVP 工具 2 - 通用文本与 JSON 语义对比工具（直接测试命令）
 
 **涉及文件：**
 - 新建：`src-tauri/src/commands/diff.rs`
@@ -768,7 +768,7 @@ git commit -m "feat(tool): 实现基于 similar 库的通用文本/JSON 差异�
 
 ---
 
-### 任务 6：MVP 工具 3 - 简易 Postman（原生 Reqwest、完全隔离安全沙箱与多实例支持）
+### Task 6: 任务 6 - MVP 工具 3 - 简易 Postman（原生 Reqwest、完全隔离安全沙箱与多实例支持）
 
 **涉及文件：**
 - 新建：`src-tauri/src/commands/http.rs`
@@ -843,7 +843,7 @@ git commit -m "feat(tool): 实现基于 reqwest 的 Postman Lite 与完全隔离
 
 ---
 
-### 任务 7：MVP 工具 4 - 信息编码与大文件流式哈希（AtomicBool 取消管理器与 Channel）
+### Task 7: 任务 7 - MVP 工具 4 - 信息编码与大文件流式哈希（AtomicBool 取消管理器与 Channel）
 
 **涉及文件：**
 - 新建：`src-tauri/src/commands/hash.rs`
@@ -1009,7 +1009,7 @@ git commit -m "feat(tool): 实现基于 2MB 缓冲区与 HashCancelManager 状�
 
 ---
 
-### 任务 8：MVP 工具 5 - 时间戳、时区与 Cron 中心（croner + chrono-tz 现代时区推演）
+### Task 8: 任务 8 - MVP 工具 5 - 时间戳、时区与 Cron 中心（croner + chrono-tz 现代时区推演）
 
 **涉及文件：**
 - 新建：`src/views/tools/TimestampCron/TimestampCron.vue`
@@ -1101,7 +1101,7 @@ git commit -m "feat(tool): 基于 croner 和 chrono-tz 实现时区感知 Cron �
 
 ---
 
-### 任务 9：分级验证与集成验收（CI 自动化 + 本地 Benchmark）
+### Task 9: 任务 9 - 分级验证与集成验收（CI 自动化 + 本地 Benchmark）
 
 **涉及文件：**
 - 新建：`tests/ci/acceptance.spec.ts`
