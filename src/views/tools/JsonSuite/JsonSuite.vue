@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useMessage } from 'naive-ui'
 import { EditorView, basicSetup } from 'codemirror'
 import { json } from '@codemirror/lang-json'
@@ -151,21 +151,36 @@ function getCursorJsonPath(state: EditorState, pos: number): string {
   }
 }
 
-function updateValidationAndStats(doc: string) {
-  rawCharCount.value = doc.length
-  rawLineCount.value = doc ? doc.split('\n').length : 1
-  hasSnowflakeId.value = /\b\d{16,}\b/.test(doc)
+let validationTimeout: ReturnType<typeof setTimeout> | null = null
 
-  if (!doc.trim()) {
-    errorMessage.value = ''
-    return
+function updateValidationAndStats(doc: string, immediate = false) {
+  if (validationTimeout) {
+    clearTimeout(validationTimeout)
+    validationTimeout = null
   }
 
-  try {
-    LosslessJSON.parse(doc)
-    errorMessage.value = ''
-  } catch (err: any) {
-    errorMessage.value = err.message || 'JSON 语法错误'
+  const run = () => {
+    rawCharCount.value = doc.length
+    rawLineCount.value = doc ? doc.split('\n').length : 1
+    hasSnowflakeId.value = /\b\d{16,}\b/.test(doc)
+
+    if (!doc.trim()) {
+      errorMessage.value = ''
+      return
+    }
+
+    try {
+      LosslessJSON.parse(doc)
+      errorMessage.value = ''
+    } catch (err: any) {
+      errorMessage.value = err.message || 'JSON 语法错误'
+    }
+  }
+
+  if (immediate) {
+    run()
+  } else {
+    validationTimeout = setTimeout(run, 250)
   }
 }
 
@@ -211,7 +226,7 @@ function initInputEditor() {
     parent: inputEditorEl.value
   })
 
-  updateValidationAndStats(initialDoc)
+  updateValidationAndStats(initialDoc, true)
 }
 
 function initOutputEditor() {
@@ -225,6 +240,7 @@ function initOutputEditor() {
       extensions: [
         basicSetup,
         json(),
+        EditorState.readOnly.of(true),
         themeCompartmentOutput.of(getEditorTheme(themeStore.isDark))
       ]
     }),
@@ -326,9 +342,10 @@ function handleRepair() {
     } catch {
       // Keep repaired text as-is
     }
-    setInputContent(finalOutput)
     if (isSplit.value) {
       setOutputContent(finalOutput)
+    } else {
+      setInputContent(finalOutput)
     }
     message.success('容错修复完成（已纠正单引号、尾随逗号与清除注释）')
     saveSnapshot()
@@ -447,23 +464,28 @@ watch(
 )
 
 // Watch split mode toggle
-watch(isSplit, (split) => {
+watch(isSplit, async (split) => {
   saveSnapshot()
+  await nextTick()
   if (split) {
-    setTimeout(() => {
+    if (!outputView) {
       initOutputEditor()
-    }, 50)
+    }
+    outputView?.requestMeasure()
   }
+  inputView?.requestMeasure()
 })
 
 onMounted(() => {
   initInputEditor()
-  if (isSplit.value) {
-    initOutputEditor()
-  }
+  initOutputEditor()
 })
 
 onBeforeUnmount(() => {
+  if (validationTimeout) {
+    clearTimeout(validationTimeout)
+    validationTimeout = null
+  }
   if (inputView) {
     inputView.destroy()
     inputView = null
@@ -676,7 +698,7 @@ onBeforeUnmount(() => {
 
       <!-- Right Editor: Split Mode Output Pane -->
       <div
-        v-if="isSplit"
+        v-show="isSplit"
         class="h-full w-1/2 flex flex-col min-w-0 bg-white dark:bg-slate-950 overflow-hidden"
       >
         <div class="h-6 px-3 bg-slate-100 dark:bg-slate-900/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 font-medium">

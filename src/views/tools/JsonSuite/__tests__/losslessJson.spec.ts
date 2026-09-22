@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { EditorState } from '@codemirror/state'
 import { formatJson, minifyJson } from '../utils/losslessJson'
 import { repairJson } from '../utils/jsonRepair'
 import { queryJsonPath } from '../utils/jsonPath'
@@ -69,5 +70,19 @@ describe('JSON 深度套件', () => {
     const resArray = queryJsonPath(json, '$.items[*].id')
     expect(resArray).toContain('1892837482910293847')
     expect(resArray).toContain('1892837482910293848')
+  })
+
+  it('CodeMirror readOnly 状态支持程序化 dispatch 事务更新并保持只读配置', () => {
+    const state = EditorState.create({
+      doc: '{"initial": 1}',
+      extensions: [EditorState.readOnly.of(true)]
+    })
+    expect(state.readOnly).toBe(true)
+
+    const tr = state.update({
+      changes: { from: 0, to: state.doc.length, insert: '{"updated": 2}' }
+    })
+    expect(tr.state.doc.toString()).toBe('{"updated": 2}')
+    expect(tr.state.readOnly).toBe(true)
   })
 })
