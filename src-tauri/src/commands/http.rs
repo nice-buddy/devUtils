@@ -4,21 +4,19 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 use crate::db::DbState;
 
-fn default_true() -> bool {
-    true
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct KeyValueItem {
     pub key: String,
     pub value: String,
-    #[serde(default = "default_true")]
-    pub enabled: bool,
     #[serde(default)]
-    pub item_type: Option<String>, // "text" | "file"
+    pub enabled: bool,
+    #[serde(default, alias = "item_type", alias = "itemType")]
+    pub item_type: Option<String>, // "text" or "file"
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct HttpRequestPayload {
     pub method: String,
     pub url: String,
@@ -26,23 +24,23 @@ pub struct HttpRequestPayload {
     pub headers: Vec<KeyValueItem>,
     #[serde(default)]
     pub params: Vec<KeyValueItem>,
-    #[serde(default)]
+    #[serde(default, alias = "body_type", alias = "bodyType")]
     pub body_type: String, // "none" | "raw" | "x-www-form-urlencoded" | "form-data" | "binary"
-    #[serde(default)]
+    #[serde(default, alias = "raw_type", alias = "rawType")]
     pub raw_type: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "body_raw", alias = "bodyRaw")]
     pub body_raw: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "form_data", alias = "formData")]
     pub form_data: Vec<KeyValueItem>,
-    #[serde(default)]
+    #[serde(default, alias = "urlencoded_data", alias = "urlencodedData")]
     pub urlencoded_data: Vec<KeyValueItem>,
-    #[serde(default)]
+    #[serde(default, alias = "binary_file_path", alias = "binaryFilePath")]
     pub binary_file_path: Option<String>,
-    #[serde(default)]
+    #[serde(default, alias = "timeout_ms", alias = "timeoutMs")]
     pub timeout_ms: Option<u64>,
-    #[serde(default)]
+    #[serde(default, alias = "ignore_ssl", alias = "ignoreSsl")]
     pub ignore_ssl: Option<bool>,
-    #[serde(default)]
+    #[serde(default, alias = "follow_redirects", alias = "followRedirects")]
     pub follow_redirects: Option<bool>,
     #[serde(default)]
     pub proxy: Option<String>,

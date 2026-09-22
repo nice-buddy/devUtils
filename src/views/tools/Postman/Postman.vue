@@ -338,7 +338,12 @@ function restoreFromHistory(item: HistoryItem) {
       request.value.params = parsedReq.params || []
       request.value.bodyType = parsedReq.body_type || 'none'
       request.value.bodyRaw = parsedReq.body_raw || ''
-      request.value.formData = parsedReq.form_data || []
+      request.value.formData = (parsedReq.form_data || []).map((f: any) => ({
+        key: f.key || '',
+        value: f.value || '',
+        enabled: f.enabled !== false,
+        itemType: f.itemType || f.item_type || 'text'
+      }))
       request.value.urlencodedData = parsedReq.urlencoded_data || []
       request.value.binaryFilePath = parsedReq.binary_file_path || ''
       if (parsedReq.timeout_ms) request.value.settings.timeoutMs = parsedReq.timeout_ms

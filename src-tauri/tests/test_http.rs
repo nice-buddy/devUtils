@@ -186,3 +186,78 @@ async fn test_http_execute_query_params_and_content_type_autoinject() {
     assert!(resp.body.to_lowercase().contains("content-type: application/json"));
 }
 
+#[tokio::test]
+async fn test_http_execute_multipart_form_data_file_streaming() {
+    use std::io::Write;
+    let mut temp = tempfile::NamedTempFile::new().unwrap();
+    let file_content = "DevUtils Multipart Stream Content 123456";
+    temp.write_all(file_content.as_bytes()).unwrap();
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    tokio::spawn(async move {
+        while let Ok((mut socket, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 16384];
+                let mut total_read = 0;
+                while total_read < buf.len() {
+                    let n = socket.read(&mut buf[total_read..]).await.unwrap_or(0);
+                    if n == 0 { break; }
+                    total_read += n;
+                    if String::from_utf8_lossy(&buf[..total_read]).contains("DevUtils Multipart Stream Content 123456") {
+                        break;
+                    }
+                }
+                let req_text = String::from_utf8_lossy(&buf[..total_read]);
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    req_text.len(),
+                    req_text
+                );
+                let _ = socket.write_all(response.as_bytes()).await;
+                let _ = socket.flush().await;
+            });
+        }
+    });
+
+    let conn = Connection::open_in_memory().await.unwrap();
+    devutils_lib::db::migrations::run_migrations(&conn).await.unwrap();
+    let state = DbState(Arc::new(conn));
+
+    let app = tauri::test::mock_app();
+    app.manage(state);
+    let tauri_state = app.state::<DbState>();
+
+    let json_req = serde_json::json!({
+        "method": "POST",
+        "url": format!("http://127.0.0.1:{}", port),
+        "headers": [],
+        "params": [],
+        "bodyType": "form-data",
+        "formData": [
+            {
+                "key": "textField",
+                "value": "textValue",
+                "enabled": true,
+                "itemType": "text"
+            },
+            {
+                "key": "fileUpload",
+                "value": temp.path().to_str().unwrap(),
+                "enabled": true,
+                "itemType": "file"
+            }
+        ]
+    });
+
+    let req: HttpRequestPayload = serde_json::from_value(json_req).expect("Deserialize payload with itemType");
+    assert_eq!(req.form_data[1].item_type.as_deref(), Some("file"));
+
+    let resp = http_execute(req, tauri_state).await.expect("Multipart request should succeed");
+    assert_eq!(resp.status, 200);
+    assert!(resp.body.contains("multipart/form-data"));
+    assert!(resp.body.contains("DevUtils Multipart Stream Content 123456"));
+    assert!(resp.body.contains("textValue"));
+}
+
