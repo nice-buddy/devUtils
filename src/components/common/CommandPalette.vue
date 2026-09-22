@@ -58,6 +58,7 @@ function handleGlobalKeydown(e: KeyboardEvent) {
 }
 
 function handleKeyDown(e: KeyboardEvent) {
+  if (e.isComposing) return
   if (!isCommandPaletteOpen.value) return
 
   if (e.key === 'ArrowDown') {

@@ -51,7 +51,13 @@ export const useTabStore = defineStore('tabs', () => {
 
     openTabs.value.splice(idx, 1)
     if (activeTabId.value === tabId) {
-      activeTabId.value = openTabs.value[Math.max(0, idx - 1)]?.id || ''
+      const nextTab = openTabs.value[Math.max(0, idx - 1)]
+      if (nextTab) {
+        nextTab.lastActive = nextTimestamp()
+        activeTabId.value = nextTab.id
+      } else {
+        activeTabId.value = ''
+      }
     }
     updateKeepAlive()
   }
