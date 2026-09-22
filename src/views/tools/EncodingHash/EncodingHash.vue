@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import {
   NSelect,
   NRadioGroup,
@@ -212,7 +212,11 @@ const HASH_ALGORITHMS = [
 // All algorithms matrix results for quick glance
 const allHashes = ref<Array<{ name: string; algo: string; hash: string }>>([])
 
+let textHashSeq = 0
+let textHashDebounceTimer: any = null
+
 async function updateTextHash() {
+  const seq = ++textHashSeq
   textHashError.value = ''
   try {
     const key = textHashHmacEnabled.value && textHashKey.value.trim() ? textHashKey.value : null
@@ -221,8 +225,10 @@ async function updateTextHash() {
       algorithm: textHashAlgo.value,
       key
     })
+    if (seq !== textHashSeq) return
     textHashResult.value = textHashUppercase.value ? res.toUpperCase() : res.toLowerCase()
   } catch (err: any) {
+    if (seq !== textHashSeq) return
     textHashError.value = String(err)
     textHashResult.value = ''
   }
@@ -232,19 +238,23 @@ async function updateTextHash() {
     try {
       const key = textHashHmacEnabled.value && textHashKey.value.trim() ? textHashKey.value : null
       const algos = ['md5', 'md5-16', 'sha-1', 'sha-256', 'sha-512', 'sha3-256', 'sha3-512']
-      const promises = algos.map(async (algo) => {
-        const h = await invoke<string>('compute_text_hash', {
-          text: textHashInput.value,
-          algorithm: algo,
-          key
+      const results = await Promise.all(
+        algos.map(async (algo) => {
+          const h = await invoke<string>('compute_text_hash', {
+            text: textHashInput.value,
+            algorithm: algo,
+            key
+          })
+          return {
+            name: algo.toUpperCase(),
+            algo,
+            hash: textHashUppercase.value ? h.toUpperCase() : h.toLowerCase()
+          }
         })
-        return {
-          name: algo.toUpperCase(),
-          algo,
-          hash: textHashUppercase.value ? h.toUpperCase() : h.toLowerCase()
-        }
-      })
-      allHashes.value = await Promise.all(promises)
+      )
+      if (seq === textHashSeq) {
+        allHashes.value = results
+      }
     } catch {
       // Keep silent
     }
@@ -253,10 +263,17 @@ async function updateTextHash() {
   }
 }
 
+function debouncedUpdateTextHash() {
+  if (textHashDebounceTimer) clearTimeout(textHashDebounceTimer)
+  textHashDebounceTimer = setTimeout(() => {
+    updateTextHash()
+  }, 150)
+}
+
 watch(
   [textHashInput, textHashAlgo, textHashUppercase, textHashHmacEnabled, textHashKey],
   () => {
-    updateTextHash()
+    debouncedUpdateTextHash()
   },
   { immediate: true }
 )
@@ -282,6 +299,7 @@ let currentTaskId = ''
 const isDragging = ref<boolean>(false)
 
 const progressPercentage = computed(() => {
+  if (fileHashStatus.value === 'completed') return 100
   if (totalBytes.value === 0) return 0
   return Math.min(100, Math.round((readBytes.value / totalBytes.value) * 1000) / 10)
 })
@@ -394,6 +412,37 @@ async function cancelFileHash() {
     }
   }
 }
+
+let unlistenDragDrop: (() => void) | null = null
+
+onMounted(async () => {
+  try {
+    const { getCurrentWebview } = await import('@tauri-apps/api/webview')
+    const unlisten = await getCurrentWebview().onDragDropEvent((event) => {
+      if (event.payload.type === 'drop' && event.payload.paths && event.payload.paths.length > 0) {
+        selectedFilePath.value = event.payload.paths[0]
+        fileHashStatus.value = 'idle'
+        fileHashResult.value = ''
+        fileHashError.value = ''
+      }
+    })
+    unlistenDragDrop = unlisten
+  } catch {
+    // Non-Tauri or test environment fallback
+  }
+})
+
+onUnmounted(() => {
+  if (textHashDebounceTimer) {
+    clearTimeout(textHashDebounceTimer)
+  }
+  if (unlistenDragDrop) {
+    unlistenDragDrop()
+  }
+  if (fileHashStatus.value === 'running' && currentTaskId) {
+    cancelFileHash()
+  }
+})
 
 // Snapshot persistence
 watch(

@@ -108,7 +108,10 @@ fn test_file_hash_streaming_and_progress() {
         file_path,
         "sha-256",
         &flag,
-        |p| progress_records.push(p),
+        |p| {
+            progress_records.push(p);
+            true
+        },
     )
     .expect("流式哈希计算失败");
 
@@ -146,6 +149,7 @@ fn test_file_hash_cancellation() {
             if p.read_bytes >= 2 * 1024 * 1024 {
                 mgr_clone.cancel(&t_id);
             }
+            true
         },
     );
 

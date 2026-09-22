@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
@@ -175,7 +175,7 @@ pub fn compute_file_hash_core<F>(
     mut on_progress: F,
 ) -> Result<String, String>
 where
-    F: FnMut(HashProgress),
+    F: FnMut(HashProgress) -> bool,
 {
     let mut file = File::open(file_path)
         .map_err(|e| format!("打开文件失败 '{}': {}", file_path.display(), e))?;
@@ -188,7 +188,7 @@ where
     let mut read_bytes: u64 = 0;
 
     if total_bytes == 0 {
-        on_progress(HashProgress {
+        let _ = on_progress(HashProgress {
             read_bytes: 0,
             total_bytes: 0,
         });
@@ -211,10 +211,13 @@ where
         hasher.update(&buffer[..n]);
         read_bytes += n as u64;
 
-        on_progress(HashProgress {
+        let alive = on_progress(HashProgress {
             read_bytes,
             total_bytes,
         });
+        if !alive {
+            return Err("Cancelled".to_string());
+        }
 
         if cancel_flag.load(Ordering::Relaxed) {
             return Err("Cancelled".to_string());
@@ -248,18 +251,18 @@ pub async fn compute_file_hash(
     cancel_manager: tauri::State<'_, HashCancelManager>,
 ) -> Result<String, String> {
     let flag = cancel_manager.register(&task_id);
-    let _guard = CancelCleanupGuard {
+    let path = PathBuf::from(file_path);
+    let algo = algorithm;
+    let flag_clone = Arc::clone(&flag);
+
+    let _cleanup_guard = CancelCleanupGuard {
         manager: cancel_manager.inner().clone(),
         task_id: task_id.clone(),
     };
 
-    let path = std::path::PathBuf::from(&file_path);
-    let algo = algorithm.clone();
-    let flag_clone = flag.clone();
-
     tokio::task::spawn_blocking(move || {
         compute_file_hash_core(&path, &algo, &flag_clone, |p| {
-            let _ = on_progress.send(p);
+            on_progress.send(p).is_ok()
         })
     })
     .await
