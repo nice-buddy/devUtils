@@ -1,49 +1,49 @@
-# Phase 1: MVP Developer Toolbox Implementation Plan
+# 第一期：MVP 开发者工具箱工程实施方案
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **供智能体执行者查阅：** 必须使用的子技能：使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans` 按任务逐项执行。步骤采用复选框（`- [ ]`）语法进行状态跟踪。
 
-**Goal:** Build the foundational Tauri 2 + Vue 3 desktop developer toolbox with 5 core MVP modules (JSON Suite with BigInt lossless protection, Text & JSON Diff, Postman Lite with native CORS-free networking, Encoding & streaming hash with cancellation, and Timestamp & Cron Hub) and local SQLite persistence with LRU tab memory management.
+**建设目标：** 构建基础的 Tauri 2 + Vue 3 跨平台桌面开发者工具箱，落地 5 个核心 MVP 模块（包含大整数精度无损保护的 JSON 深度套件、通用文本与 JSON 语义对比工具、原生免跨域的简易 Postman、支持取消的编码转换与流式哈希计算、纳秒安全的时间戳与 Cron 推演中心），并构建基于 LRU 淘汰机制的标签页内存管理与本地 SQLite 自动迁移持久化底座。
 
-**Architecture:** A lightweight desktop workbench pairing Vue 3, Naive UI, CodeMirror 6, and Tailwind CSS with a Rust Tauri 2 backend. State and persistence are handled via Pinia and asynchronous `tokio-rusqlite` with automatic database migration and trigger-based history pruning. Heavy computations (>5MB, single-file SHA-256 with 2MB buffer, network requests) run natively in Rust with cancellation tokens and IPC progress channels.
+**架构设计：** 采用前端 Vue 3 + Naive UI + CodeMirror 6 + Tailwind CSS 与 Rust Tauri 2 后端协同架构。状态管理与本地持久化由 Pinia 与异步 `tokio-rusqlite` 驱动，内置数据库版本迁移引擎以及基于 SQLite 触发器（Trigger）的历史记录自动修剪机制。重载计算（单文件 SHA-256 采用 2MB 缓冲区流式读取、大报文分块、原生 HTTP 客户端）统一下沉至 Rust 原生层，配备原子取消标记（AtomicBool）与 IPC 进度推送通道。
 
-**Tech Stack:** Tauri 2, Rust (tokio, reqwest, tokio-rusqlite, similar, sha2, md-5, sha3, hex), Vue 3, TypeScript, Vite, Tailwind CSS, Naive UI, CodeMirror 6, Pinia, Vitest.
+**核心技术栈：** Tauri 2, Rust (tokio, reqwest, tokio-rusqlite, similar, sha2, md-5, sha3, hex), Vue 3, TypeScript, Vite, Tailwind CSS, Naive UI, CodeMirror 6, Pinia, Vitest。
 
-## Global Constraints
+## 全局工程约束
 
-- Target platforms: macOS (Apple Silicon + Intel universal) & Windows 10/11 (x64 & ARM64)
-- Cold start P50 to TTI (Time to Interactive): macOS < 1.2s, Windows < 2.0s
-- Idle memory RSS: macOS < 90MB, Windows < 130MB, 5 active tabs < 180MB
-- 19-digit snowflake IDs and 19-digit nanoseconds must be string-preserved without numeric precision loss
-- Postman preview and Markdown preview must use `<iframe sandbox="allow-same-origin">` without `allow-scripts`
-- File hash: 2MB buffer serial read with `AtomicBool` cancellation in < 300ms window
-- SQLite: `schema_migrations`, triggers for 500 history items and 50 recents per tool
-- Text threshold rules: <1MB in frontend, 1MB-5MB lightweight mode, >5MB Rust task_id & virtual chunking
+- **目标适配平台**：macOS（Apple Silicon 与 Intel 通用二进制）与 Windows 10/11（x64 与 ARM64）
+- **冷启动指标（P50 到 TTI 可交互）**：macOS < 1.2s，Windows < 2.0s
+- **物理内存常驻指标（RSS）**：macOS 空载 < 90MB，Windows 空载 < 130MB，5 个活跃工作 Tab 并发 < 180MB
+- **精度保真原则**：19 位雪花算法 ID 及 19 位纳秒级时间戳全程以纯文本字符串（String）形式流转与处理，严禁转为 JS Number 导致浮点精度截断
+- **安全沙箱隔离**：Postman HTML 响应预览与 Markdown 预览必须使用 `<iframe sandbox="allow-same-origin">` 隔离沙箱，严禁赋予 `allow-scripts` 权限
+- **流式哈希规范**：单文件哈希采用 2MB 固定缓冲区串行读取，物理内存恒定 < 30MB，支持通过 `AtomicBool` 在 300ms 容差窗口内快速安全终止
+- **SQLite 自动修剪**：具备 `schema_migrations` 迁移控制，历史记录表触发器自动限制保留最新 500 条，最近使用表每个工具自动修剪保留最新 50 条
+- **大文本分级处理**：<1MB 纯前端即时处理，1MB~5MB 前端轻量模式，>5MB 启用 Rust 异步任务与分块虚拟滚动渲染
 
 ---
 
-### Task 1: Project Scaffolding & Foundation Setup
+### 任务 1：项目工程脚手架搭建与基础设施配置
 
-**Files:**
-- Create: `package.json`
-- Create: `vite.config.ts`
-- Create: `tailwind.config.js`
-- Create: `postcss.config.js`
-- Create: `tsconfig.json`
-- Create: `src-tauri/Cargo.toml`
-- Create: `src-tauri/tauri.conf.json`
-- Create: `src-tauri/src/main.rs`
-- Create: `src-tauri/src/lib.rs`
-- Create: `src/main.ts`
-- Create: `src/App.vue`
-- Create: `src/style.css`
+**涉及文件：**
+- 新建：`package.json`
+- 新建：`vite.config.ts`
+- 新建：`tailwind.config.js`
+- 新建：`postcss.config.js`
+- 新建：`tsconfig.json`
+- 新建：`src-tauri/Cargo.toml`
+- 新建：`src-tauri/tauri.conf.json`
+- 新建：`src-tauri/src/main.rs`
+- 新建：`src-tauri/src/lib.rs`
+- 新建：`src/main.ts`
+- 新建：`src/App.vue`
+- 新建：`src/style.css`
 
-**Interfaces:**
-- Produces: Running Tauri 2 + Vue 3 shell with Tailwind CSS & Naive UI provider setup
-- Consumes: Standard Vite and Cargo build tools
+**接口与协同约定：**
+- 产出：正常运行的 Tauri 2 + Vue 3 桌面应用骨架，配置完成 Tailwind CSS、Naive UI 全局 Provider 与 Vitest 测试套件
+- 依赖：标准 Node.js/pnpm 与 Rust Cargo 编译工具链
 
-- [ ] **Step 1: Write package.json and frontend configs**
+- [ ] **步骤 1：编写前端 package.json 与配置文件**
 
-Create `package.json` with Tauri 2, Vue 3, Tailwind CSS, Naive UI, Pinia, and Vitest dependencies:
+创建包含 Tauri 2、Vue 3、Tailwind CSS、Naive UI、Pinia 与 Vitest 依赖的 `package.json`：
 
 ```json
 {
@@ -84,9 +84,9 @@ Create `package.json` with Tauri 2, Vue 3, Tailwind CSS, Naive UI, Pinia, and Vi
 }
 ```
 
-- [ ] **Step 2: Configure Vite, Tailwind, PostCSS, and TypeScript**
+- [ ] **步骤 2：配置 Vite、Tailwind、PostCSS 与 TypeScript**
 
-Create `vite.config.ts`:
+创建 `vite.config.ts`：
 ```typescript
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
@@ -107,7 +107,7 @@ export default defineConfig({
 })
 ```
 
-Create `tailwind.config.js`:
+创建 `tailwind.config.js`：
 ```javascript
 /** @type {import('tailwindcss').Config} */
 export default {
@@ -122,7 +122,7 @@ export default {
 }
 ```
 
-Create `postcss.config.js`:
+创建 `postcss.config.js`：
 ```javascript
 export default {
   plugins: {
@@ -132,14 +132,14 @@ export default {
 }
 ```
 
-- [ ] **Step 3: Setup Cargo.toml and Tauri 2 configuration**
+- [ ] **步骤 3：配置 Rust 依赖 Cargo.toml 与 Tauri 2 应用配置**
 
-Create `src-tauri/Cargo.toml`:
+创建 `src-tauri/Cargo.toml`：
 ```toml
 [package]
 name = "devutils"
 version = "0.1.0"
-description = "DevUtils desktop developer toolbox"
+description = "DevUtils 跨平台桌面开发者工具箱"
 edition = "2021"
 
 [lib]
@@ -171,7 +171,7 @@ machine-uid = "0.5"
 uuid = { version = "1.10", features = ["v4", "v7", "fast-rng"] }
 ```
 
-Create `src-tauri/tauri.conf.json`:
+创建 `src-tauri/tauri.conf.json`：
 ```json
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/tooling/cli/schema.json",
@@ -215,35 +215,35 @@ Create `src-tauri/tauri.conf.json`:
 }
 ```
 
-- [ ] **Step 4: Verify frontend and cargo compilation**
+- [ ] **步骤 4：验证前端与 Rust 基础编译**
 
-Run: `cargo check --manifest-path src-tauri/Cargo.toml`
-Expected: PASS with no compilation errors.
+运行：`cargo check --manifest-path src-tauri/Cargo.toml`  
+预期输出：PASS（编译检查通过，无语法或依赖错误）
 
-- [ ] **Step 5: Commit baseline scaffold**
+- [ ] **步骤 5：提交脚手架代码**
 
 ```bash
 git add package.json vite.config.ts tailwind.config.js src-tauri/
-git commit -m "chore: initialize tauri 2 + vue 3 project scaffold"
+git commit -m "chore: 初始化 tauri 2 + vue 3 基础工程脚手架"
 ```
 
 ---
 
-### Task 2: SQLite Async Engine & Pruning Migrations (`tokio-rusqlite`)
+### 任务 2：SQLite 异步引擎与自动修剪触发器架构（tokio-rusqlite）
 
-**Files:**
-- Create: `src-tauri/src/db/mod.rs`
-- Create: `src-tauri/src/db/migrations.rs`
-- Create: `src-tauri/tests/test_db.rs`
+**涉及文件：**
+- 新建：`src-tauri/src/db/mod.rs`
+- 新建：`src-tauri/src/db/migrations.rs`
+- 新建：`src-tauri/tests/test_db.rs`
 
-**Interfaces:**
-- Produces: `DbState` holding `tokio_rusqlite::Connection`
-- Produces commands: `db_execute`, `db_query`, `prune_recents`
-- Consumes: `tokio-rusqlite`
+**接口与协同约定：**
+- 产出：管理 `tokio_rusqlite::Connection` 状态的 `DbState` 结构体
+- 产出 IPC 命令：`db_execute`, `db_query`, `prune_recents`
+- 依赖：`tokio-rusqlite` 与 `rusqlite`
 
-- [ ] **Step 1: Write database schema migration test**
+- [ ] **步骤 1：编写数据库迁移与触发器自动化测试**
 
-Create `src-tauri/tests/test_db.rs`:
+创建 `src-tauri/tests/test_db.rs`：
 ```rust
 use tokio_rusqlite::Connection;
 
@@ -251,10 +251,10 @@ use tokio_rusqlite::Connection;
 async fn test_migrations_and_triggers() {
     let conn = Connection::open_in_memory().await.unwrap();
     
-    // Apply migrations
+    // 执行数据库迁移初始化
     devutils_lib::db::migrations::run_migrations(&conn).await.unwrap();
 
-    // Verify migration record exists
+    // 验证版本迁移记录是否存在
     let version: i32 = conn.call(|conn| {
         let mut stmt = conn.prepare("SELECT MAX(version) FROM schema_migrations")?;
         let v = stmt.query_row([], |row| row.get(0))?;
@@ -262,7 +262,7 @@ async fn test_migrations_and_triggers() {
     }).await.unwrap();
     assert_eq!(version, 1);
 
-    // Test http_history 500-item trigger pruning
+    // 测试 http_history 500 条自动修剪触发器
     conn.call(|conn| {
         for i in 1..=505 {
             conn.execute(
@@ -274,17 +274,30 @@ async fn test_migrations_and_triggers() {
         assert_eq!(count, 500);
         Ok(())
     }).await.unwrap();
+
+    // 测试 app_recents 单工具 50 条自动修剪触发器
+    conn.call(|conn| {
+        for i in 1..=55 {
+            conn.execute(
+                "INSERT INTO app_recents (id, tool_id, summary, payload_json, accessed_at) VALUES (?1, 'json_suite', 'test', '{}', ?2)",
+                rusqlite::params![format!("rec_{}", i), i],
+            )?;
+        }
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM app_recents WHERE tool_id = 'json_suite'", [], |r| r.get(0))?;
+        assert_eq!(count, 50);
+        Ok(())
+    }).await.unwrap();
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **步骤 2：运行测试验证失败**
 
-Run: `cargo test --test test_db`
-Expected: FAIL (module `devutils_lib::db` not found)
+运行：`cargo test --test test_db`  
+预期输出：FAIL（找不到 `devutils_lib::db` 模块）
 
-- [ ] **Step 3: Implement database migrations with triggers**
+- [ ] **步骤 3：实现包含触发器的数据库版本迁移模块**
 
-Create `src-tauri/src/db/migrations.rs`:
+创建 `src-tauri/src/db/migrations.rs`：
 ```rust
 use tokio_rusqlite::{Connection, Result};
 
@@ -400,7 +413,7 @@ pub async fn run_migrations(conn: &Connection) -> Result<()> {
             END;
 
             INSERT OR IGNORE INTO schema_migrations (version, applied_at, description)
-            VALUES (1, strftime('%s', 'now'), 'Initial schema setup with triggers');
+            VALUES (1, strftime('%s', 'now'), '初始化表结构与自动修剪触发器');
             "
         )?;
         Ok(())
@@ -408,69 +421,69 @@ pub async fn run_migrations(conn: &Connection) -> Result<()> {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **步骤 4：运行测试验证通过**
 
-Run: `cargo test --test test_db`
-Expected: PASS
+运行：`cargo test --test test_db`  
+预期输出：PASS（迁移与触发器自动修剪测试 100% 通过）
 
-- [ ] **Step 5: Commit database migration module**
+- [ ] **步骤 5：提交数据库模块**
 
 ```bash
 git add src-tauri/src/db/ src-tauri/tests/test_db.rs
-git commit -m "feat(db): implement async sqlite schema migration and pruning triggers"
+git commit -m "feat(db): 实现基于 tokio-rusqlite 的异步数据库迁移与触发器自动修剪机制"
 ```
 
 ---
 
-### Task 3: Workbench Shell: Sidebar, Tab System (LRU Eviction), and In-App Cmd+K
+### 任务 3：工作台主体：侧边栏导航、Tab 系统（LRU 淘汰卸载）与应用内 Cmd+K
 
-**Files:**
-- Create: `src/stores/tabStore.ts`
-- Create: `src/stores/settingStore.ts`
-- Create: `src/components/layout/Sidebar.vue`
-- Create: `src/components/layout/TabBar.vue`
-- Create: `src/components/common/CommandPalette.vue`
-- Create: `src/types/tool.ts`
-- Test: `src/stores/__tests__/tabStore.spec.ts`
+**涉及文件：**
+- 新建：`src/stores/tabStore.ts`
+- 新建：`src/stores/settingStore.ts`
+- 新建：`src/components/layout/Sidebar.vue`
+- 新建：`src/components/layout/TabBar.vue`
+- 新建：`src/components/common/CommandPalette.vue`
+- 新建：`src/types/tool.ts`
+- 测试：`src/stores/__tests__/tabStore.spec.ts`
 
-**Interfaces:**
-- Produces: `useTabStore` with `openTab(toolId)`, `closeTab(tabId)`, `activeTabId`, `activeTabs` (max 5 in memory, older LRU evicted to snapshot).
-- Produces: `CommandPalette.vue` triggered by `Cmd/Ctrl + K`.
+**接口与协同约定：**
+- 产出：Pinia 状态 `useTabStore`，提供 `openTab(toolId)`, `closeTab(tabId)`, `activeTabId`, `keepAliveTabIds`（限制最多 5 个驻留内存，超额按 LRU 卸载为快照）
+- 产出：`CommandPalette.vue` 命令面板组件，监听 `Cmd/Ctrl + K` 实现毫秒级模糊检索跳转
 
-- [ ] **Step 1: Write TabStore LRU test**
+- [ ] **步骤 1：编写 TabStore LRU 内存淘汰单元测试**
 
-Create `src/stores/__tests__/tabStore.spec.ts`:
+创建 `src/stores/__tests__/tabStore.spec.ts`：
 ```typescript
 import { setActivePinia, createPinia } from 'pinia'
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useTabStore } from '../tabStore'
 
-describe('tabStore LRU eviction', () => {
+describe('tabStore 标签页 LRU 淘汰机制', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
   })
 
-  it('evicts LRU tab from keepAlive when exceeding 5 tabs', () => {
+  it('当标签页打开超过 5 个时，将最久未访问的标签从 keepAlive 激活列表中移除', () => {
     const store = useTabStore()
     for (let i = 1; i <= 6; i++) {
       store.openTab(`tool_${i}`)
     }
     expect(store.openTabs.length).toBe(6)
     expect(store.keepAliveTabIds.length).toBe(5)
-    // The first tool tab should be evicted from keepAlive list, but kept in openTabs
+    // 第一个打开且未再访问的工具应被移出 keepAlive 列表，但保留在 openTabs 供用户随时切回
     expect(store.keepAliveTabIds.includes(store.openTabs[0].id)).toBe(false)
   })
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **步骤 2：运行测试验证失败**
 
-Run: `npm test tabStore`
-Expected: FAIL
+运行：`npm test tabStore`  
+预期输出：FAIL
 
-- [ ] **Step 3: Implement TabStore with LRU & snapshot serialization**
+- [ ] **步骤 3：实现 TabStore 与状态序列化逻辑**
 
-Create `src/stores/tabStore.ts`:
+创建 `src/stores/tabStore.ts`：
 ```typescript
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
@@ -530,43 +543,43 @@ export const useTabStore = defineStore('tabs', () => {
 })
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **步骤 4：运行测试验证通过**
 
-Run: `npm test tabStore`
-Expected: PASS
+运行：`npm test tabStore`  
+预期输出：PASS
 
-- [ ] **Step 5: Commit workbench shell components**
+- [ ] **步骤 5：提交工作台主体组件**
 
 ```bash
 git add src/stores/ src/components/layout/ src/types/
-git commit -m "feat(ui): implement workbench layout with LRU tab keepalive management and Cmd+K"
+git commit -m "feat(ui): 实现工作台多标签页管理、LRU 内存卸载机制与 Cmd+K 快速检索面板"
 ```
 
 ---
 
-### Task 4: MVP Tool 1 - JSON Suite with BigInt Lossless Protection
+### 任务 4：MVP 工具 1 - JSON 深度套件（大整数精度无损保护与 JSONPath）
 
-**Files:**
-- Create: `src/views/tools/JsonSuite/JsonSuite.vue`
-- Create: `src/views/tools/JsonSuite/utils/losslessJson.ts`
-- Create: `src/views/tools/JsonSuite/utils/jsonPath.ts`
-- Test: `src/views/tools/JsonSuite/__tests__/losslessJson.spec.ts`
+**涉及文件：**
+- 新建：`src/views/tools/JsonSuite/JsonSuite.vue`
+- 新建：`src/views/tools/JsonSuite/utils/losslessJson.ts`
+- 新建：`src/views/tools/JsonSuite/utils/jsonPath.ts`
+- 测试：`src/views/tools/JsonSuite/__tests__/losslessJson.spec.ts`
 
-**Interfaces:**
-- Produces: `formatJson(raw: string, indent: number, sortKeys: boolean): string`
-- Produces: `minifyJson(raw: string): string`
-- Produces: `queryJsonPath(raw: string, path: string): string`
-- Preserves: 19-digit snowflake numbers (e.g. `1892837482910293847`) without truncation.
+**接口与协同约定：**
+- 产出函数：`formatJson(raw: string, indent: number, sortKeys: boolean): string`
+- 产出函数：`minifyJson(raw: string): string`
+- 产出函数：`queryJsonPath(raw: string, path: string): string`
+- 精度保障：严格保留 19 位雪花数值（如 `1892837482910293847`），严禁发生末位精度截断。
 
-- [ ] **Step 1: Write BigInt lossless formatting test**
+- [ ] **步骤 1：编写大整数无损格式化单元测试**
 
-Create `src/views/tools/JsonSuite/__tests__/losslessJson.spec.ts`:
+创建 `src/views/tools/JsonSuite/__tests__/losslessJson.spec.ts`：
 ```typescript
 import { describe, it, expect } from 'vitest'
 import { formatJson, minifyJson } from '../utils/losslessJson'
 
-describe('losslessJson formatting', () => {
-  it('preserves 19-digit snowflake ID precisely without truncation', () => {
+describe('losslessJson 大整数精度无损格式化', () => {
+  it('格式化与压缩过程中 100% 精确保留 19 位雪花 ID，不发生精度丢失截断', () => {
     const input = '{"orderId":1892837482910293847,"code":"OK"}'
     const formatted = formatJson(input, 2, false)
     expect(formatted).toContain('1892837482910293847')
@@ -576,7 +589,7 @@ describe('losslessJson formatting', () => {
     expect(minified).toContain('1892837482910293847')
   })
 
-  it('recursively sorts keys alphabetically', () => {
+  it('支持深度递归对所有层级的 Object Key 按字母序排列', () => {
     const input = '{"b":1,"a":{"d":4,"c":3}}'
     const formatted = formatJson(input, 2, true)
     expect(formatted.indexOf('"a"')).toBeLessThan(formatted.indexOf('"b"'))
@@ -585,27 +598,25 @@ describe('losslessJson formatting', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **步骤 2：运行测试验证失败**
 
-Run: `npm test losslessJson`
-Expected: FAIL
+运行：`npm test losslessJson`  
+预期输出：FAIL
 
-- [ ] **Step 3: Implement lossless tokenizer and formatter**
+- [ ] **步骤 3：实现无损 Tokenizer 词法保护与格式化器**
 
-Create `src/views/tools/JsonSuite/utils/losslessJson.ts`:
+创建 `src/views/tools/JsonSuite/utils/losslessJson.ts`：
 ```typescript
-// Uses regex tokenization to preserve raw numeric literals > 15 digits
+// 利用正则预处理保护超过 15 位的数值字面量，防止 JSON.parse 浮点截断
 const BIGINT_REGEX = /:\s*(-?\d{16,})/g
 
 export function formatJson(raw: string, indent: number = 2, sortKeys: boolean = false): string {
-  // Protect big integers by wrapping into placeholder objects
   const protectedRaw = raw.replace(BIGINT_REGEX, ': "__BIGINT_$1__"')
   const parsed = JSON.parse(protectedRaw)
 
   const processed = sortKeys ? deepSort(parsed) : parsed
   const formatted = JSON.stringify(processed, null, indent)
 
-  // Restore raw numeric literals without quotes
   return formatted.replace(/"__BIGINT_(-?\d+)__"/g, '$1')
 }
 
@@ -631,35 +642,35 @@ function deepSort(obj: any): any {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **步骤 4：运行测试验证通过**
 
-Run: `npm test losslessJson`
-Expected: PASS
+运行：`npm test losslessJson`  
+预期输出：PASS
 
-- [ ] **Step 5: Commit JSON Suite implementation**
+- [ ] **步骤 5：提交 JSON 深度套件**
 
 ```bash
 git add src/views/tools/JsonSuite/
-git commit -m "feat(tool): implement JSON suite with BigInt lossless preservation and recursive sorting"
+git commit -m "feat(tool): 实现集成大整数无损保护与递归排序的 JSON 深度套件"
 ```
 
 ---
 
-### Task 5: MVP Tool 2 - Text & JSON Semantic Diff Viewer
+### 任务 5：MVP 工具 2 - 通用文本与 JSON 语义对比工具（Diff Viewer）
 
-**Files:**
-- Create: `src-tauri/src/commands/diff.rs`
-- Create: `src/views/tools/DiffViewer/DiffViewer.vue`
-- Create: `src/views/tools/DiffViewer/utils/semanticDiff.ts`
-- Test: `src-tauri/tests/test_diff.rs`
+**涉及文件：**
+- 新建：`src-tauri/src/commands/diff.rs`
+- 新建：`src/views/tools/DiffViewer/DiffViewer.vue`
+- 新建：`src/views/tools/DiffViewer/utils/semanticDiff.ts`
+- 测试：`src-tauri/tests/test_diff.rs`
 
-**Interfaces:**
-- Produces Rust command: `diff_text(original: String, modified: String) -> Vec<DiffChunk>`
-- Produces: UI component with Split & Inline views, diff jumping (`Alt+Up/Down`), and stats summary.
+**接口与协同约定：**
+- 产出 Rust IPC 命令：`diff_text(original: String, modified: String) -> Vec<DiffItem>`
+- 产出前端组件：支持双栏分屏（Split）与单栏内联（Inline）切换，支持快捷键 `Alt + ↑ / ↓` 跳转差异行，顶部显示差异汇总统计指标。
 
-- [ ] **Step 1: Write Rust diff command unit test**
+- [ ] **步骤 1：编写 Rust similar 比对测试**
 
-Create `src-tauri/tests/test_diff.rs`:
+创建 `src-tauri/tests/test_diff.rs`：
 ```rust
 use similar::{ChangeTag, TextDiff};
 
@@ -675,14 +686,14 @@ fn test_similar_line_diff() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it passes**
+- [ ] **步骤 2：运行测试验证通过**
 
-Run: `cargo test --test test_diff`
-Expected: PASS
+运行：`cargo test --test test_diff`  
+预期输出：PASS
 
-- [ ] **Step 3: Implement Rust diff command**
+- [ ] **步骤 3：实现 Rust diff 命令并对接前端视图**
 
-Create `src-tauri/src/commands/diff.rs`:
+创建 `src-tauri/src/commands/diff.rs`：
 ```rust
 use serde::Serialize;
 use similar::{ChangeTag, TextDiff};
@@ -718,44 +729,42 @@ pub fn diff_text(original: String, modified: String) -> Vec<DiffItem> {
 }
 ```
 
-- [ ] **Step 4: Connect Diff command in lib.rs and build frontend view**
+在 `src/views/tools/DiffViewer/DiffViewer.vue` 中接入 CodeMirror 6 与该比对命令。
 
-Wire up `diff_text` in `src-tauri/src/lib.rs` and create `DiffViewer.vue` supporting Side-by-Side and Inline modes.
-
-- [ ] **Step 5: Commit Diff tool**
+- [ ] **步骤 4：提交对比工具**
 
 ```bash
 git add src-tauri/src/commands/diff.rs src/views/tools/DiffViewer/
-git commit -m "feat(tool): implement text and JSON semantic diff viewer with similar crate"
+git commit -m "feat(tool): 基于 similar 库实现通用文本与 JSON 语义对比工具"
 ```
 
 ---
 
-### Task 6: MVP Tool 3 - Postman Lite (Native Reqwest, No-CORS, Env, Sandboxed Iframe)
+### 任务 6：MVP 工具 3 - 简易 Postman（原生 Reqwest、免跨域、环境变量与沙箱预览）
 
-**Files:**
-- Create: `src-tauri/src/commands/http.rs`
-- Create: `src/views/tools/Postman/Postman.vue`
-- Create: `src/views/tools/Postman/components/RequestPanel.vue`
-- Create: `src/views/tools/Postman/components/ResponsePanel.vue`
-- Create: `src/views/tools/Postman/components/HtmlPreviewIframe.vue`
-- Create: `src/views/tools/Postman/utils/curlParser.ts`
-- Test: `src/views/tools/Postman/__tests__/curlParser.spec.ts`
+**涉及文件：**
+- 新建：`src-tauri/src/commands/http.rs`
+- 新建：`src/views/tools/Postman/Postman.vue`
+- 新建：`src/views/tools/Postman/components/RequestPanel.vue`
+- 新建：`src/views/tools/Postman/components/ResponsePanel.vue`
+- 新建：`src/views/tools/Postman/components/HtmlPreviewIframe.vue`
+- 新建：`src/views/tools/Postman/utils/curlParser.ts`
+- 测试：`src/views/tools/Postman/__tests__/curlParser.spec.ts`
 
-**Interfaces:**
-- Produces Rust command: `http_execute(req: HttpRequestPayload) -> Result<HttpResponsePayload, String>`
-- Produces: `HtmlPreviewIframe.vue` sandbox: `<iframe sandbox="allow-same-origin" :srcdoc="htmlContent">` (without `allow-scripts`)
-- Produces: cURL import and export utility.
+**接口与协同约定：**
+- 产出 Rust IPC 命令：`http_execute(req: HttpRequestPayload) -> Result<HttpResponsePayload, String>`
+- 产出组件：`HtmlPreviewIframe.vue`，严格使用 `<iframe sandbox="allow-same-origin" :srcdoc="htmlContent">`，坚决不配置 `allow-scripts`，防御 XSS 攻击
+- 产出：cURL 命令行一键导入与导出工具函数。
 
-- [ ] **Step 1: Write cURL parser unit test**
+- [ ] **步骤 1：编写 cURL 导入解析器单元测试**
 
-Create `src/views/tools/Postman/__tests__/curlParser.spec.ts`:
+创建 `src/views/tools/Postman/__tests__/curlParser.spec.ts`：
 ```typescript
 import { describe, it, expect } from 'vitest'
 import { parseCurl } from '../utils/curlParser'
 
-describe('curlParser', () => {
-  it('parses basic POST curl with headers and json body', () => {
+describe('curlParser 命令行解析器', () => {
+  it('正确解析包含 POST、Headers 与 JSON Body 的复杂 cURL 字符串', () => {
     const curl = `curl -X POST "https://api.example.com/login" -H "Content-Type: application/json" -d '{"user":"test"}'`
     const parsed = parseCurl(curl)
     expect(parsed.method).toBe('POST')
@@ -766,47 +775,48 @@ describe('curlParser', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **步骤 2：运行测试验证失败**
 
-Run: `npm test curlParser`
-Expected: FAIL
+运行：`npm test curlParser`  
+预期输出：FAIL
 
-- [ ] **Step 3: Implement curlParser and Rust reqwest command**
+- [ ] **步骤 3：实现 cURL 解析器与 Rust reqwest 异步客户端**
 
-Create `src-tauri/src/commands/http.rs` with `reqwest::ClientBuilder::new().danger_accept_invalid_certs(ignore_ssl)` support.
-Create `HtmlPreviewIframe.vue` with strict `<iframe sandbox="allow-same-origin">` (no `allow-scripts`).
+实现 `src/views/tools/Postman/utils/curlParser.ts`。  
+创建 `src-tauri/src/commands/http.rs`，支持自签名证书忽略、环境变量插值与历史记录持久化。  
+创建 `HtmlPreviewIframe.vue` 落实 `<iframe sandbox="allow-same-origin">` 隔离沙箱。
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **步骤 4：运行测试验证通过**
 
-Run: `npm test curlParser`
-Expected: PASS
+运行：`npm test curlParser`  
+预期输出：PASS
 
-- [ ] **Step 5: Commit Postman Lite**
+- [ ] **步骤 5：提交 Postman Lite 模块**
 
 ```bash
 git add src-tauri/src/commands/http.rs src/views/tools/Postman/
-git commit -m "feat(tool): implement Postman Lite with native CORS-free reqwest and sandboxed html preview"
+git commit -m "feat(tool): 实现基于 Rust 原生 reqwest 的无跨域 Postman Lite 及安全预览沙箱"
 ```
 
 ---
 
-### Task 7: MVP Tool 4 - Encoding & Streaming File Hash (with Cancellation & 2MB Buffer)
+### 任务 7：MVP 工具 4 - 信息编码与大文件流式哈希（带 2MB 缓冲区与原子取消）
 
-**Files:**
-- Create: `src-tauri/src/commands/hash.rs`
-- Create: `src/views/tools/EncodingHash/EncodingHash.vue`
-- Create: `src/views/tools/EncodingHash/utils/encoders.ts`
-- Test: `src/views/tools/EncodingHash/__tests__/encoders.spec.ts`
-- Test: `src-tauri/tests/test_hash.rs`
+**涉及文件：**
+- 新建：`src-tauri/src/commands/hash.rs`
+- 新建：`src/views/tools/EncodingHash/EncodingHash.vue`
+- 新建：`src/views/tools/EncodingHash/utils/encoders.ts`
+- 测试：`src/views/tools/EncodingHash/__tests__/encoders.spec.ts`
+- 测试：`src-tauri/tests/test_hash.rs`
 
-**Interfaces:**
-- Produces Rust command: `compute_file_hash(path: String, algorithm: String, on_progress: Channel<HashProgress>, cancel_token: State<HashCancelManager>)`
-- Memory limit: <30MB RSS during 10GB file hash using 2MB chunk buffer.
-- Cancellation window: <300ms.
+**接口与协同约定：**
+- 产出 Rust IPC 命令：`compute_file_hash(path: String, algorithm: String, on_progress: Channel<HashProgress>, cancel_token: State<HashCancelManager>)`
+- 内存约束：计算 10GB+ 超大文件时，通过 2MB 固定缓冲区使常驻内存稳定维持在 < 30MB
+- 响应容差：取消指令下发后，底层在 300ms 容差窗口内安全释放文件句柄并终止任务。
 
-- [ ] **Step 1: Write hash cancellation unit test**
+- [ ] **步骤 1：编写哈希流式计算与原子取消测试**
 
-Create `src-tauri/tests/test_hash.rs`:
+创建 `src-tauri/tests/test_hash.rs`：
 ```rust
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -815,10 +825,10 @@ use std::io::Write;
 #[test]
 fn test_stream_hash_with_cancel() {
     let mut temp = tempfile::NamedTempFile::new().unwrap();
-    let data = vec![0u8; 10 * 1024 * 1024]; // 10MB
+    let data = vec![0u8; 10 * 1024 * 1024]; // 10MB 模拟测试文件
     temp.write_all(&data).unwrap();
 
-    let cancel_flag = Arc::new(AtomicBool::new(true)); // Pre-cancelled
+    let cancel_flag = Arc::new(AtomicBool::new(true)); // 模拟已触发取消
     let result = devutils_lib::commands::hash::calculate_file_sha256(
         temp.path().to_str().unwrap(),
         cancel_flag,
@@ -829,14 +839,14 @@ fn test_stream_hash_with_cancel() {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **步骤 2：运行测试验证失败**
 
-Run: `cargo test --test test_hash`
-Expected: FAIL
+运行：`cargo test --test test_hash`  
+预期输出：FAIL
 
-- [ ] **Step 3: Implement streaming file hash with 2MB buffer and AtomicBool**
+- [ ] **步骤 3：实现 2MB 固定缓冲区串行流式哈希算法与 AtomicBool 取消机制**
 
-Create `src-tauri/src/commands/hash.rs`:
+创建 `src-tauri/src/commands/hash.rs`：
 ```rust
 use sha2::{Sha256, Digest};
 use std::fs::File;
@@ -855,7 +865,7 @@ where
     let mut file = File::open(path).map_err(|e| e.to_string())?;
     let total_size = file.metadata().map_err(|e| e.to_string())?.len();
     let mut hasher = Sha256::new();
-    let mut buffer = vec![0u8; 2 * 1024 * 1024]; // 2MB Buffer
+    let mut buffer = vec![0u8; 2 * 1024 * 1024]; // 2MB 固定缓冲区，避免内存膨胀
     let mut read_bytes = 0u64;
 
     loop {
@@ -873,49 +883,49 @@ where
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **步骤 4：运行测试验证通过**
 
-Run: `cargo test --test test_hash`
-Expected: PASS
+运行：`cargo test --test test_hash`  
+预期输出：PASS
 
-- [ ] **Step 5: Commit Encoding & Hash tool**
+- [ ] **步骤 5：提交编码与哈希模块**
 
 ```bash
 git add src-tauri/src/commands/hash.rs src/views/tools/EncodingHash/
-git commit -m "feat(tool): implement encoding conversions and streaming file hash with 2MB buffer and cancellation"
+git commit -m "feat(tool): 实现信息编码互转与基于 2MB 缓冲区支持取消的大文件流式哈希计算"
 ```
 
 ---
 
-### Task 8: MVP Tool 5 - Timestamp, Timezone & Cron Hub (Nanosecond Safe & Unix date)
+### 任务 8：MVP 工具 5 - 时间戳、时区与 Cron 推演中心（纳秒安全与 Unix date 互转）
 
-**Files:**
-- Create: `src/views/tools/TimestampCron/TimestampCron.vue`
-- Create: `src/views/tools/TimestampCron/utils/timeConverter.ts`
-- Create: `src-tauri/src/commands/cron.rs`
-- Test: `src/views/tools/TimestampCron/__tests__/timeConverter.spec.ts`
+**涉及文件：**
+- 新建：`src/views/tools/TimestampCron/TimestampCron.vue`
+- 新建：`src/views/tools/TimestampCron/utils/timeConverter.ts`
+- 新建：`src-tauri/src/commands/cron.rs`
+- 测试：`src/views/tools/TimestampCron/__tests__/timeConverter.spec.ts`
 
-**Interfaces:**
-- Produces: 19-digit nanosecond safe string conversions
-- Produces: Unix `date -r` and `date -d` command generator
-- Produces: Cron future 10 runs evaluator with DST explanation
+**接口与协同约定：**
+- 产出：19 位纳秒级安全字符串解析与跨时区矩阵换算
+- 产出：Unix 终端 `date -r`（macOS）与 `date -d`（Linux）命令自动生成器
+- 产出：基于 Rust `cron` 库的 Cron 表达式未来 10 次运行推演（含夏令时 DST 说明）。
 
-- [ ] **Step 1: Write nanosecond string conversion test**
+- [ ] **步骤 1：编写纳秒安全与 Unix date 命令行生成单元测试**
 
-Create `src/views/tools/TimestampCron/__tests__/timeConverter.spec.ts`:
+创建 `src/views/tools/TimestampCron/__tests__/timeConverter.spec.ts`：
 ```typescript
 import { describe, it, expect } from 'vitest'
 import { parseTimestampString, generateUnixDateCmd } from '../utils/timeConverter'
 
-describe('timeConverter', () => {
-  it('handles 19-digit nanoseconds without string precision loss', () => {
+describe('timeConverter 时间工具', () => {
+  it('正确解析 19 位纳秒时间戳，全程使用字符串保持精度不失真', () => {
     const nanoStr = "1790000000123456789"
     const parsed = parseTimestampString(nanoStr)
     expect(parsed.unit).toBe('ns')
     expect(parsed.rawString).toBe("1790000000123456789")
   })
 
-  it('generates accurate unix date commands for mac and linux', () => {
+  it('针对时间戳精准生成适用于 macOS 与 Linux 终端的 date 调试命令', () => {
     const sec = "1790000000"
     const cmds = generateUnixDateCmd(sec)
     expect(cmds.macos).toBe("date -r 1790000000")
@@ -924,57 +934,57 @@ describe('timeConverter', () => {
 })
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **步骤 2：运行测试验证失败**
 
-Run: `npm test timeConverter`
-Expected: FAIL
+运行：`npm test timeConverter`  
+预期输出：FAIL
 
-- [ ] **Step 3: Implement timeConverter and Rust cron evaluator**
+- [ ] **步骤 3：实现纳秒安全转换器与 Rust Cron 推演命令**
 
-Implement string-based nanosecond parsing, Unix date command generation, and Rust `cron::Schedule` calculation for future 10 executions.
+实现 `src/views/tools/TimestampCron/utils/timeConverter.ts` 与 `src-tauri/src/commands/cron.rs`，并在 `TimestampCron.vue` 中构建可视化时区与推演卡片。
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **步骤 4：运行测试验证通过**
 
-Run: `npm test timeConverter`
-Expected: PASS
+运行：`npm test timeConverter`  
+预期输出：PASS
 
-- [ ] **Step 5: Commit Timestamp & Cron tool**
+- [ ] **步骤 5：提交时间工具模块**
 
 ```bash
 git add src/views/tools/TimestampCron/ src-tauri/src/commands/cron.rs
-git commit -m "feat(tool): implement timestamp converter with nanosecond safety, timezone matrix, and cron predictor"
+git commit -m "feat(tool): 实现纳秒安全时间戳转换、世界时区矩阵、Unix date 终端命令与 Cron 推演"
 ```
 
 ---
 
-### Task 9: Full Integration Verification & Acceptance Benchmark (TC-01 ~ TC-07)
+### 任务 9：全量集成验证与性能基准验收（TC-01 ~ TC-07）
 
-**Files:**
-- Create: `tests/e2e/benchmark.spec.ts`
-- Modify: `docs/superpowers/specs/2026-09-22-developer-toolbox-design.md`
+**涉及文件：**
+- 新建：`tests/e2e/benchmark.spec.ts`
+- 修改：`docs/superpowers/specs/2026-09-22-developer-toolbox-design.md`
 
-**Interfaces:**
-- Validates: TC-01 (19-digit snowflake ID and nanoseconds precision)
-- Validates: TC-02 & TC-03 (Postman native CORS bypass & self-signed certs)
-- Validates: TC-04 (File hash streaming with cancellation within 300ms)
-- Validates: TC-05 (100k JSON line loading without white screen)
-- Validates: TC-06 (Idle RSS: macOS <90MB, Windows <130MB)
-- Validates: TC-07 (SQLite database migration & auto-pruning triggers)
+**验证项全量覆盖：**
+- **TC-01**：长整数雪花 ID（19位）与纳秒级时间戳精度 100% 保真
+- **TC-02 & TC-03**：Postman 原生无跨域请求与忽略自签名 SSL 证书握手
+- **TC-04**：5GB 文件哈希流式读取，300ms 内安全响应取消请求
+- **TC-05**：100,000 行 JSON 正常载入，内存增量波动 < 60MB，无白屏崩溃
+- **TC-06**：冷启动常驻物理内存：macOS < 90MB，Windows < 130MB
+- **TC-07**：SQLite 数据库迁移自动化执行，500 条历史记录与 50 条最近记录触发器自动修剪生效
 
-- [ ] **Step 1: Execute test suite across all units**
+- [ ] **步骤 1：执行全量单元测试与组件测试**
 
-Run: `npm test` and `cargo test`
-Expected: ALL PASS with zero failures.
+运行：`npm test` 与 `cargo test`  
+预期输出：全部 PASS，0 失败。
 
-- [ ] **Step 2: Run build verification**
+- [ ] **步骤 2：执行全工程编译与类型健全性检查**
 
-Run: `npm run build` and `cargo check --manifest-path src-tauri/Cargo.toml`
-Expected: Zero type errors, clean artifacts.
+运行：`npm run build` 与 `cargo check --manifest-path src-tauri/Cargo.toml`  
+预期输出：0 警告，0 类型错误，输出标准静态资源。
 
-- [ ] **Step 3: Commit integration tests and tag MVP milestone**
+- [ ] **步骤 3：提交集成测试并标记 MVP 里程碑 Tag**
 
 ```bash
 git add tests/
-git commit -m "test: add integration test suite and verify TC-01 through TC-07 acceptance criteria"
-git tag -a v0.1.0-mvp -m "Phase 1 MVP Milestone Complete"
+git commit -m "test: 添加全量自动化验收测试套件，通过 TC-01 至 TC-07 验收标准"
+git tag -a v0.1.0-mvp -m "第一期 MVP 核心里程碑完成"
 ```
