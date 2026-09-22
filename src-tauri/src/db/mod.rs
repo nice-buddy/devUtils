@@ -13,6 +13,11 @@ pub async fn init_db(app: &AppHandle) -> Result<DbState, Box<dyn std::error::Err
     let db_path = app_dir.join("devutils.db");
 
     let conn = Connection::open(db_path).await?;
+    conn.call(|c| {
+        c.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")?;
+        Ok(())
+    })
+    .await?;
     migrations::run_migrations(&conn).await?;
 
     Ok(DbState(Arc::new(conn)))
@@ -78,7 +83,15 @@ pub async fn db_query(
                     let val_ref = row.get_ref(idx)?;
                     let json_val = match val_ref {
                         rusqlite::types::ValueRef::Null => serde_json::Value::Null,
-                        rusqlite::types::ValueRef::Integer(i) => serde_json::Value::Number(i.into()),
+                        rusqlite::types::ValueRef::Integer(i) => {
+                            const MAX_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
+                            const MIN_SAFE_INTEGER: i64 = -9_007_199_254_740_991;
+                            if !(MIN_SAFE_INTEGER..=MAX_SAFE_INTEGER).contains(&i) {
+                                serde_json::Value::String(i.to_string())
+                            } else {
+                                serde_json::Value::Number(i.into())
+                            }
+                        }
                         rusqlite::types::ValueRef::Real(f) => serde_json::Number::from_f64(f)
                             .map(serde_json::Value::Number)
                             .unwrap_or(serde_json::Value::Null),

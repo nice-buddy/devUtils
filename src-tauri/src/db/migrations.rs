@@ -1,8 +1,6 @@
 use tokio_rusqlite::Connection;
 
 const V1_SCHEMA_SQL: &str = r#"
-PRAGMA foreign_keys = ON;
-
 -- 1. 系统与用户偏好表
 CREATE TABLE IF NOT EXISTS sys_settings (
     key TEXT PRIMARY KEY,
@@ -117,6 +115,9 @@ END;
 
 pub async fn run_migrations(conn: &Connection) -> Result<(), tokio_rusqlite::Error> {
     conn.call(|c| {
+        // 在事务外启用外键约束支持
+        c.execute_batch("PRAGMA foreign_keys = ON;")?;
+
         // 创建迁移版本记录表
         c.execute_batch(
             "CREATE TABLE IF NOT EXISTS schema_migrations (

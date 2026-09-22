@@ -1,6 +1,9 @@
 use std::sync::Arc;
+use tauri::Manager;
 use tokio_rusqlite::Connection;
 use devutils_lib::db::DbState;
+
+
 
 #[tokio::test]
 async fn test_database_lifecycle_and_triggers() {
@@ -131,3 +134,213 @@ async fn test_migration_idempotency() {
         .unwrap();
     assert_eq!(version, 1);
 }
+
+#[tokio::test]
+async fn test_db_ipc_commands_and_cascade_delete() {
+    let conn = Connection::open_in_memory().await.unwrap();
+    devutils_lib::db::migrations::run_migrations(&conn).await.unwrap();
+    let state = DbState(Arc::new(conn));
+
+    let app = tauri::test::mock_app();
+    app.manage(state);
+    let tauri_state = app.state::<DbState>();
+
+    // 1. 测试 db_execute 插入 http_collections (参数类型: string, null, number)
+    let col_affected = devutils_lib::db::db_execute(
+        "INSERT INTO http_collections (id, parent_id, name, sort_order) VALUES (?1, ?2, ?3, ?4)".into(),
+        Some(vec![
+            serde_json::Value::String("col_test_1".into()),
+            serde_json::Value::Null,
+            serde_json::Value::String("Test Collection".into()),
+            serde_json::json!(10),
+        ]),
+        tauri_state.clone(),
+    )
+    .await
+    .expect("Failed to insert collection");
+    assert_eq!(col_affected, 1);
+
+    // 2. 测试 db_execute 插入 http_requests (参数类型: string, json object, json array/null, number)
+    let req_affected = devutils_lib::db::db_execute(
+        "INSERT INTO http_requests (id, collection_id, name, method, url, headers_json, params_json, body_type, body_content, created_at, updated_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)".into(),
+        Some(vec![
+            serde_json::Value::String("req_test_1".into()),
+            serde_json::Value::String("col_test_1".into()),
+            serde_json::Value::String("Get Users".into()),
+            serde_json::Value::String("GET".into()),
+            serde_json::Value::String("https://api.example.com/users".into()),
+            serde_json::json!({"Authorization": "Bearer token123"}),
+            serde_json::json!([{"key": "page", "value": "1"}]),
+            serde_json::Value::String("json".into()),
+            serde_json::Value::String("{\"query\":\"all\"}".into()),
+            serde_json::json!(1710000000),
+            serde_json::json!(1710000000),
+        ]),
+        tauri_state.clone(),
+    )
+    .await
+    .expect("Failed to insert request");
+    assert_eq!(req_affected, 1);
+
+    // 3. 测试 db_execute 插入包含 boolean 类型的记录 (以 http_environments 为例)
+    let env_affected = devutils_lib::db::db_execute(
+        "INSERT INTO http_environments (id, name, variables_json, is_active, created_at) VALUES (?1, ?2, ?3, ?4, ?5)".into(),
+        Some(vec![
+            serde_json::Value::String("env_test_1".into()),
+            serde_json::Value::String("Development".into()),
+            serde_json::json!({"API_KEY": "secret"}),
+            serde_json::Value::Bool(true),
+            serde_json::json!(1710000000),
+        ]),
+        tauri_state.clone(),
+    )
+    .await
+    .expect("Failed to insert environment");
+    assert_eq!(env_affected, 1);
+
+    // 4. 测试 db_query 查询数据回显，并验证字段类型转换
+    let req_rows = devutils_lib::db::db_query(
+        "SELECT id, collection_id, name, method, url, headers_json, params_json, created_at FROM http_requests WHERE id = ?1".into(),
+        Some(vec![serde_json::Value::String("req_test_1".into())]),
+        tauri_state.clone(),
+    )
+    .await
+    .expect("Failed to query requests");
+
+    assert_eq!(req_rows.len(), 1);
+    let row = &req_rows[0];
+    assert_eq!(row["id"], "req_test_1");
+    assert_eq!(row["collection_id"], "col_test_1");
+    assert_eq!(row["name"], "Get Users");
+    assert_eq!(row["method"], "GET");
+    assert_eq!(row["url"], "https://api.example.com/users");
+    assert_eq!(row["headers_json"], "{\"Authorization\":\"Bearer token123\"}");
+    assert_eq!(row["params_json"], "[{\"key\":\"page\",\"value\":\"1\"}]");
+    assert_eq!(row["created_at"], 1710000000);
+
+    let env_rows = devutils_lib::db::db_query(
+        "SELECT id, name, is_active FROM http_environments WHERE id = ?1".into(),
+        Some(vec![serde_json::Value::String("env_test_1".into())]),
+        tauri_state.clone(),
+    )
+    .await
+    .expect("Failed to query environment");
+    assert_eq!(env_rows.len(), 1);
+    assert_eq!(env_rows[0]["is_active"], 1);
+
+    // 5. 测试外键约束阻止插入无效的 collection_id
+    let invalid_foreign_key_result = devutils_lib::db::db_execute(
+        "INSERT INTO http_requests (id, collection_id, name, method, url, created_at, updated_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)".into(),
+        Some(vec![
+            serde_json::Value::String("req_invalid".into()),
+            serde_json::Value::String("non_existent_collection".into()),
+            serde_json::Value::String("Invalid FK".into()),
+            serde_json::Value::String("GET".into()),
+            serde_json::Value::String("https://api.example.com".into()),
+            serde_json::json!(1710000000),
+            serde_json::json!(1710000000),
+        ]),
+        tauri_state.clone(),
+    )
+    .await;
+    assert!(
+        invalid_foreign_key_result.is_err(),
+        "Expected foreign key constraint violation error when collection does not exist"
+    );
+
+    // 6. 测试级联删除 (ON DELETE CASCADE): 删除 collection，关联的 request 自动被删除
+    let del_affected = devutils_lib::db::db_execute(
+        "DELETE FROM http_collections WHERE id = ?1".into(),
+        Some(vec![serde_json::Value::String("col_test_1".into())]),
+        tauri_state.clone(),
+    )
+    .await
+    .expect("Failed to delete collection");
+    assert_eq!(del_affected, 1);
+
+    let req_after_del = devutils_lib::db::db_query(
+        "SELECT id FROM http_requests WHERE id = ?1".into(),
+        Some(vec![serde_json::Value::String("req_test_1".into())]),
+        tauri_state.clone(),
+    )
+    .await
+    .expect("Query failed");
+    assert_eq!(
+        req_after_del.len(),
+        0,
+        "Request should be deleted by CASCADE when parent collection is deleted"
+    );
+}
+
+#[tokio::test]
+async fn test_db_bigint_ipc_safety() {
+    let conn = Connection::open_in_memory().await.unwrap();
+    devutils_lib::db::migrations::run_migrations(&conn).await.unwrap();
+    let state = DbState(Arc::new(conn));
+
+    let app = tauri::test::mock_app();
+    app.manage(state);
+    let tauri_state = app.state::<DbState>();
+
+    // 边界值:
+    // JS Number.MAX_SAFE_INTEGER = 9007199254740991
+    // JS Number.MIN_SAFE_INTEGER = -9007199254740991
+    let safe_positive = 9_007_199_254_740_991i64;
+    let overflow_positive = 9_007_199_254_740_992i64;
+    let i64_max = i64::MAX; // 9223372036854775807
+    let safe_negative = -9_007_199_254_740_991i64;
+    let overflow_negative = -9_007_199_254_740_992i64;
+    let i64_min = i64::MIN; // -9223372036854775808
+
+    devutils_lib::db::db_execute(
+        "INSERT INTO sys_settings (key, value, updated_at) VALUES \
+         ('safe_pos', 'val', ?1), \
+         ('overflow_pos', 'val', ?2), \
+         ('max_pos', 'val', ?3), \
+         ('safe_neg', 'val', ?4), \
+         ('overflow_neg', 'val', ?5), \
+         ('min_neg', 'val', ?6)".into(),
+        Some(vec![
+            serde_json::json!(safe_positive),
+            serde_json::json!(overflow_positive),
+            serde_json::json!(i64_max),
+            serde_json::json!(safe_negative),
+            serde_json::json!(overflow_negative),
+            serde_json::json!(i64_min),
+        ]),
+        tauri_state.clone(),
+    )
+    .await
+    .expect("Insert settings");
+
+    let rows = devutils_lib::db::db_query(
+        "SELECT key, updated_at FROM sys_settings ORDER BY key".into(),
+        None,
+        tauri_state.clone(),
+    )
+    .await
+    .expect("Query settings");
+
+    let map: std::collections::HashMap<String, serde_json::Value> = rows
+        .into_iter()
+        .map(|r| {
+            (
+                r["key"].as_str().unwrap().to_string(),
+                r["updated_at"].clone(),
+            )
+        })
+        .collect();
+
+    // 安全范围内应保持为 JSON Number
+    assert_eq!(map["safe_pos"], serde_json::Value::Number(safe_positive.into()));
+    assert_eq!(map["safe_neg"], serde_json::Value::Number(safe_negative.into()));
+
+    // 超出 JS 安全整数范围的应被序列化为 String
+    assert_eq!(map["overflow_pos"], serde_json::Value::String("9007199254740992".into()));
+    assert_eq!(map["max_pos"], serde_json::Value::String("9223372036854775807".into()));
+    assert_eq!(map["overflow_neg"], serde_json::Value::String("-9007199254740992".into()));
+    assert_eq!(map["min_neg"], serde_json::Value::String("-9223372036854775808".into()));
+}
+
