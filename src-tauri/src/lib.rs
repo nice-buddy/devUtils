@@ -25,6 +25,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             db::db_execute,
             db::db_query,
+            commands::diff::diff_text,
         ])
         .run(tauri::generate_context!())
         .expect("运行 DevUtils 发生异常");
