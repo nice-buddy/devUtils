@@ -169,6 +169,13 @@ function updateValidationAndStats(doc: string, immediate = false) {
       return
     }
 
+    const len = doc.length
+    if (len > 5 * 1024 * 1024) {
+      hasSnowflakeId.value = true
+      errorMessage.value = '文本超过 5MB，已自动开启轻量只读保护模式以防止界面阻塞'
+      return
+    }
+
     try {
       LosslessJSON.parse(doc)
       errorMessage.value = ''
