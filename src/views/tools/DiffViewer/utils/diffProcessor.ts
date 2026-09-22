@@ -62,6 +62,10 @@ export function prepareSemanticJson(
   }
 }
 
+function stripTrailingNewline(str: string): string {
+  return str.replace(/[\r\n]+$/, '')
+}
+
 /**
  * Transforms raw DiffItems from Rust/fallback into side-by-side rows, unified rows, and statistics.
  */
@@ -81,18 +85,19 @@ export function processDiff(items: DiffItem[]): ProcessedDiff {
     const item = items[i]
 
     if (item.tag === 'equal') {
+      const text = stripTrailingNewline(item.value)
       sideBySideRows.push({
         id: ++rowId,
         hunkIndex: null,
         left: {
           lineNum: item.old_index !== null ? item.old_index + 1 : null,
           tag: 'equal',
-          text: item.value
+          text
         },
         right: {
           lineNum: item.new_index !== null ? item.new_index + 1 : null,
           tag: 'equal',
-          text: item.value
+          text
         }
       })
 
@@ -102,7 +107,7 @@ export function processDiff(items: DiffItem[]): ProcessedDiff {
         oldLineNum: item.old_index !== null ? item.old_index + 1 : null,
         newLineNum: item.new_index !== null ? item.new_index + 1 : null,
         tag: 'equal',
-        text: item.value
+        text
       })
 
       i++
@@ -136,7 +141,7 @@ export function processDiff(items: DiffItem[]): ProcessedDiff {
           oldLineNum: del.old_index !== null ? del.old_index + 1 : null,
           newLineNum: null,
           tag: 'delete',
-          text: del.value
+          text: stripTrailingNewline(del.value)
         })
       }
       for (const ins of hunkInserts) {
@@ -146,7 +151,7 @@ export function processDiff(items: DiffItem[]): ProcessedDiff {
           oldLineNum: null,
           newLineNum: ins.new_index !== null ? ins.new_index + 1 : null,
           tag: 'insert',
-          text: ins.value
+          text: stripTrailingNewline(ins.value)
         })
       }
 
@@ -163,7 +168,7 @@ export function processDiff(items: DiffItem[]): ProcessedDiff {
             ? {
                 lineNum: del.old_index !== null ? del.old_index + 1 : null,
                 tag: 'delete',
-                text: del.value
+                text: stripTrailingNewline(del.value)
               }
             : {
                 lineNum: null,
@@ -174,7 +179,7 @@ export function processDiff(items: DiffItem[]): ProcessedDiff {
             ? {
                 lineNum: ins.new_index !== null ? ins.new_index + 1 : null,
                 tag: 'insert',
-                text: ins.value
+                text: stripTrailingNewline(ins.value)
               }
             : {
                 lineNum: null,

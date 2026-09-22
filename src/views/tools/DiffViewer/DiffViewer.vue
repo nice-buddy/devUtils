@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { useMessage } from 'naive-ui'
 import { EditorView, basicSetup } from 'codemirror'
 import { json } from '@codemirror/lang-json'
@@ -67,6 +67,30 @@ const viewMode = ref<'split' | 'unified' | 'edit'>(props.initialSnapshot?.viewMo
 const isSemanticJson = ref<boolean>(props.initialSnapshot?.isSemanticJson ?? false)
 const activeHunkIndex = ref<number>(0)
 const semanticWarning = ref<string>('')
+
+// Container ref for scoped DOM queries
+const containerRef = ref<HTMLDivElement | null>(null)
+
+// Large payload detection (> 2MB or > 5000 lines)
+const LARGE_PAYLOAD_BYTES = 2 * 1024 * 1024 // 2MB
+const LARGE_PAYLOAD_LINES = 5000
+
+function countLines(str: string): number {
+  if (!str) return 0
+  let count = 1
+  for (let i = 0; i < str.length; i++) {
+    if (str.charCodeAt(i) === 10) count++
+  }
+  return count
+}
+
+const isLargePayload = computed(() => {
+  const orig = originalText.value || ''
+  const mod = modifiedText.value || ''
+  if (orig.length + mod.length > LARGE_PAYLOAD_BYTES) return true
+  const totalLines = countLines(orig) + countLines(mod)
+  return totalLines > LARGE_PAYLOAD_LINES
+})
 
 // Processed diff state
 const processed = ref<ProcessedDiff>({
@@ -145,7 +169,9 @@ async function updateDiff(immediate = false) {
     semanticWarning.value = ''
 
     if (isSemanticJson.value) {
-      if (orig.trim() || mod.trim()) {
+      if (isLargePayload.value) {
+        semanticWarning.value = '大文本保护模式生效中，已跳过复杂 JSON 递归键排序以防界面卡顿'
+      } else if (orig.trim() || mod.trim()) {
         const prep = prepareSemanticJson(orig, mod, 2)
         if (prep.success) {
           orig = prep.original
@@ -173,7 +199,8 @@ async function updateDiff(immediate = false) {
   if (immediate) {
     await run()
   } else {
-    computeDiffDebounceTimer = setTimeout(run, 150)
+    const debounceDelay = isLargePayload.value ? 600 : 150
+    computeDiffDebounceTimer = setTimeout(run, debounceDelay)
   }
 }
 
@@ -247,7 +274,7 @@ function setModifiedEditorText(text: string) {
 // Navigation & jumping
 function scrollToActiveHunk() {
   nextTick(() => {
-    const el = document.querySelector(`[data-hunk-index="${activeHunkIndex.value}"]`)
+    const el = containerRef.value?.querySelector(`[data-hunk-index="${activeHunkIndex.value}"]`)
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }
@@ -275,10 +302,12 @@ function handlePrevDiff() {
 }
 
 function handleKeyDown(e: KeyboardEvent) {
-  if (e.altKey && (e.key === 'ArrowDown' || e.key === 'Down')) {
+  if (tabStore.activeTabId !== props.tabId) return
+
+  if (viewMode.value !== 'edit' && e.altKey && (e.key === 'ArrowDown' || e.key === 'Down')) {
     e.preventDefault()
     handleNextDiff()
-  } else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'Up')) {
+  } else if (viewMode.value !== 'edit' && e.altKey && (e.key === 'ArrowUp' || e.key === 'Up')) {
     e.preventDefault()
     handlePrevDiff()
   } else if (e.altKey && e.key === 'Enter') {
@@ -377,6 +406,10 @@ onMounted(() => {
   if (viewMode.value === 'edit') {
     initOriginalEditor()
     initModifiedEditor()
+    nextTick(() => {
+      originalView?.requestMeasure()
+      modifiedView?.requestMeasure()
+    })
   }
 })
 
@@ -562,6 +595,19 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <!-- Sub Warning Bar (Large Payload Guard) -->
+    <div
+      v-if="isLargePayload"
+      class="h-7 px-3 bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-900/60 flex items-center justify-between text-xs text-amber-700 dark:text-amber-300 shrink-0"
+    >
+      <div class="flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <span>输入文本总计超过 2MB 或 5000 行，大文本保护模式已生效以避免界面卡死</span>
+      </div>
+    </div>
+
     <!-- Sub Warning Bar (If JSON Semantic Mode fails parse) -->
     <div
       v-if="semanticWarning"
@@ -582,10 +628,10 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- Main Canvas -->
-    <div class="flex-1 min-h-0 w-full flex overflow-hidden">
+    <div ref="containerRef" class="flex-1 min-h-0 w-full flex overflow-hidden">
       <!-- 1. EDIT MODE: Side-by-Side CodeMirror 6 Editors -->
       <div
-        v-if="viewMode === 'edit'"
+        v-show="viewMode === 'edit'"
         class="h-full w-full flex overflow-hidden"
       >
         <!-- Left Editor: Original Text -->
@@ -629,7 +675,7 @@ onBeforeUnmount(() => {
 
       <!-- 2. SIDE-BY-SIDE (SPLIT) DIFF VIEW -->
       <div
-        v-else-if="viewMode === 'split'"
+        v-if="viewMode === 'split'"
         class="h-full w-full flex flex-col overflow-hidden bg-white dark:bg-slate-950"
       >
         <!-- Column Headers -->
@@ -717,7 +763,7 @@ onBeforeUnmount(() => {
                       : 'text-slate-800 dark:text-slate-200'
                   ]"
                 >
-                  {{ row.left.text.replace(/[\r\n]+$/, '') }}
+                  {{ row.left.text }}
                 </td>
 
                 <!-- Right Line Number -->
@@ -759,7 +805,7 @@ onBeforeUnmount(() => {
                       : 'text-slate-800 dark:text-slate-200'
                   ]"
                 >
-                  {{ row.right.text.replace(/[\r\n]+$/, '') }}
+                  {{ row.right.text }}
                 </td>
               </tr>
             </tbody>
@@ -857,7 +903,7 @@ onBeforeUnmount(() => {
 
                 <!-- Content -->
                 <td class="py-0.5 px-2.5 whitespace-pre-wrap break-all">
-                  {{ row.text.replace(/[\r\n]+$/, '') }}
+                  {{ row.text }}
                 </td>
               </tr>
             </tbody>
@@ -883,6 +929,9 @@ onBeforeUnmount(() => {
 
       <!-- Center / Right: Mode & Hunk Summary -->
       <div class="flex items-center gap-3">
+        <span v-if="isLargePayload" class="px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-800 text-[10px] font-sans">
+          大文本保护
+        </span>
         <span v-if="isSemanticJson" class="text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />

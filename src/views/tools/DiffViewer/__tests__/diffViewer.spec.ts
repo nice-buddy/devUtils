@@ -71,10 +71,14 @@ describe('DiffViewer Engine & Processor', () => {
       expect(processed.sideBySideRows.length).toBe(3)
       // Row 1: equal line1
       expect(processed.sideBySideRows[0].left.tag).toBe('equal')
+      expect(processed.sideBySideRows[0].left.text).toBe('line1')
       expect(processed.sideBySideRows[0].right.tag).toBe('equal')
+      expect(processed.sideBySideRows[0].right.text).toBe('line1')
       // Row 2: delete line2 vs insert line2_mod
       expect(processed.sideBySideRows[1].left.tag).toBe('delete')
+      expect(processed.sideBySideRows[1].left.text).toBe('line2')
       expect(processed.sideBySideRows[1].right.tag).toBe('insert')
+      expect(processed.sideBySideRows[1].right.text).toBe('line2_mod')
       // Row 3: empty left vs insert line3
       expect(processed.sideBySideRows[2].left.tag).toBe('empty')
       expect(processed.sideBySideRows[2].right.tag).toBe('insert')
