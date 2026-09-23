@@ -7,6 +7,7 @@ import { EditorState, Compartment } from '@codemirror/state'
 import { useThemeStore } from '@/stores/themeStore'
 import { useTabStore } from '@/stores/tabStore'
 import { runDiff } from './utils/diffService'
+import { altShortcutLabel } from '@/utils/platform'
 import {
   processDiff,
   prepareSemanticJson,
@@ -567,7 +568,7 @@ onBeforeUnmount(() => {
                 ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-xs font-semibold'
                 : 'text-slate-500 hover:text-slate-900 dark:hover:text-slate-200'
             ]"
-            title="编辑左右两侧源文本 (Alt + Enter)"
+            :title="`编辑左右两侧源文本 (${altShortcutLabel('Enter')})`"
           >
             <span>✏️</span>
             <span>编辑源文本</span>
@@ -605,7 +606,7 @@ onBeforeUnmount(() => {
             @click="handlePrevDiff"
             :disabled="processed.stats.totalHunks === 0"
             class="px-1.5 py-0.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent transition-all flex items-center"
-            title="上一处差异 (Alt + ↑)"
+            :title="`上一处差异 (${altShortcutLabel('↑')})`"
           >
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7" />
@@ -620,7 +621,7 @@ onBeforeUnmount(() => {
             @click="handleNextDiff"
             :disabled="processed.stats.totalHunks === 0"
             class="px-1.5 py-0.5 rounded hover:bg-white dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 disabled:opacity-30 disabled:hover:bg-transparent transition-all flex items-center"
-            title="下一处差异 (Alt + ↓)"
+            :title="`下一处差异 (${altShortcutLabel('↓')})`"
           >
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
               <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
@@ -791,7 +792,7 @@ onBeforeUnmount(() => {
                 :class="[
                   'border-b border-slate-100 dark:border-slate-900/50 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors',
                   row.hunkIndex !== null && row.hunkIndex === activeHunkIndex
-                    ? 'ring-1 ring-inset ring-indigo-500/80 bg-indigo-500/[0.04]'
+                    ? 'diff-active-row'
                     : ''
                 ]"
                 style="height: 28px;"
@@ -970,7 +971,7 @@ onBeforeUnmount(() => {
                     ? 'bg-emerald-50/80 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200'
                     : 'text-slate-800 dark:text-slate-200',
                   row.hunkIndex !== null && row.hunkIndex === activeHunkIndex
-                    ? 'ring-1 ring-inset ring-indigo-500/80 bg-indigo-500/[0.04]'
+                    ? 'diff-active-row'
                     : ''
                 ]"
                 style="height: 28px;"
@@ -1045,12 +1046,12 @@ onBeforeUnmount(() => {
       <!-- Left: Keybinding Hint -->
       <div class="flex items-center gap-3 shrink-0">
         <div class="flex items-center gap-1.5">
-          <kbd class="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">Alt+↑</kbd>
-          <kbd class="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">Alt+↓</kbd>
+          <kbd class="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">{{ altShortcutLabel('↑') }}</kbd>
+          <kbd class="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">{{ altShortcutLabel('↓') }}</kbd>
           <span>差异跳转</span>
         </div>
         <div class="flex items-center gap-1.5">
-          <kbd class="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">Alt+Enter</kbd>
+          <kbd class="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">{{ altShortcutLabel('Enter') }}</kbd>
           <span>比对/编辑切换</span>
         </div>
       </div>
@@ -1099,3 +1100,19 @@ onBeforeUnmount(() => {
     </footer>
   </div>
 </template>
+
+<style scoped>
+/*
+ * 当前差异块高亮：底色与内阴影必须画在单元格上。
+ * 画在 <tr> 上会被单元格背景覆盖，深浅色主题下都会显得过淡。
+ */
+.diff-active-row > td {
+  background-image: linear-gradient(rgba(99, 102, 241, 0.18), rgba(99, 102, 241, 0.18));
+}
+.diff-active-row > td:first-child {
+  box-shadow: inset 4px 0 0 0 #6366f1;
+}
+.diff-active-row > td:last-child {
+  box-shadow: inset -2px 0 0 0 #6366f1;
+}
+</style>

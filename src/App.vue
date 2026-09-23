@@ -15,6 +15,7 @@ import { useTabStore, TabItem } from '@/stores/tabStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 import { TOOLS, ToolDefinition } from '@/types/tool'
+import { isMacOS, shortcutLabel } from '@/utils/platform'
 
 // Tool views are code-split so cold start does not pay for tools the user has not opened.
 const ToolPlaceholder = defineAsyncComponent(() => import('@/views/tools/ToolPlaceholder.vue'))
@@ -115,6 +116,13 @@ onMounted(async () => {
 
           <!-- Right: Main Workbench Area -->
           <div class="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
+            <!-- macOS 顶部红绿灯留白，同时作为窗口拖拽区 -->
+            <div
+              v-if="isMacOS"
+              data-tauri-drag-region="deep"
+              class="h-7 w-full shrink-0 bg-slate-100 dark:bg-slate-950"
+            ></div>
+
             <!-- Window Drag & Title Area -->
             <header
               data-tauri-drag-region="deep"
@@ -130,7 +138,7 @@ onMounted(async () => {
                   class="flex items-center gap-1.5 px-2 py-0.5 rounded bg-slate-200/50 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors text-[11px]"
                 >
                   <span>查找</span>
-                  <kbd class="font-mono text-[9px]">⌘K</kbd>
+                  <kbd class="font-mono text-[9px]">{{ shortcutLabel('K') }}</kbd>
                 </button>
               </div>
             </header>
@@ -178,7 +186,7 @@ onMounted(async () => {
                       <span class="text-sm">搜索工具名称或输入关键词...</span>
                     </div>
                     <kbd class="font-mono text-xs px-2 py-1 rounded bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 border border-slate-200 dark:border-slate-600">
-                      ⌘K
+                      {{ shortcutLabel('K') }}
                     </kbd>
                   </button>
 

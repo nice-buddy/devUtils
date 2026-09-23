@@ -5,6 +5,7 @@ import { useTabStore } from '@/stores/tabStore'
 import { useToolStore } from '@/stores/toolStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCommandPalette } from '@/composables/useCommandPalette'
+import { isMacOS, shortcutLabel } from '@/utils/platform'
 
 const tabStore = useTabStore()
 const toolStore = useToolStore()
@@ -64,31 +65,42 @@ function toggleFavorite(toolId: string, event: MouseEvent) {
       isCollapsed ? 'w-14' : 'w-64'
     ]"
   >
+    <!-- macOS 顶部红绿灯留白，同时作为窗口拖拽区 -->
+    <div v-if="isMacOS" data-tauri-drag-region="deep" class="h-7 shrink-0"></div>
+
     <!-- App Brand & Title -->
     <div data-tauri-drag-region="deep" class="h-12 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-800">
-      <div v-if="!isCollapsed" class="flex items-center gap-2 min-w-0">
-        <div class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
-          D
+      <template v-if="!isCollapsed">
+        <div class="flex items-center gap-2 min-w-0">
+          <div class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
+            D
+          </div>
+          <div class="min-w-0 flex items-baseline gap-1.5">
+            <span class="font-bold text-sm tracking-tight text-slate-900 dark:text-slate-100">DevUtils</span>
+            <span class="text-[10px] text-indigo-500 dark:text-indigo-400 font-mono">v0.1</span>
+          </div>
         </div>
-        <div class="min-w-0 flex items-baseline gap-1.5">
-          <span class="font-bold text-sm tracking-tight text-slate-900 dark:text-slate-100">DevUtils</span>
-          <span class="text-[10px] text-indigo-500 dark:text-indigo-400 font-mono">v0.1</span>
-        </div>
-      </div>
-      <div v-else class="w-full flex justify-center">
-        <div class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">
-          D
-        </div>
-      </div>
 
+        <button
+          @click="isCollapsed = true"
+          title="收起侧边栏"
+          class="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        </button>
+      </template>
+
+      <!-- 收起态：展开按钮与收起按钮保持在同一位置（顶栏） -->
       <button
-        v-if="!isCollapsed"
-        @click="isCollapsed = !isCollapsed"
-        title="收起侧边栏"
-        class="p-1 rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+        v-else
+        @click="isCollapsed = false"
+        title="展开侧边栏"
+        class="mx-auto p-1.5 rounded-md text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors"
       >
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
         </svg>
       </button>
     </div>
@@ -107,14 +119,14 @@ function toggleFavorite(toolId: string, event: MouseEvent) {
           <span>快速查找...</span>
         </div>
         <kbd class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700">
-          ⌘K
+          {{ shortcutLabel('K') }}
         </kbd>
       </button>
 
       <button
         v-else
         @click="openCommandPalette"
-        title="快速查找 (⌘K)"
+        :title="`快速查找 (${shortcutLabel('K')})`"
         class="w-full flex justify-center py-2 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
       >
         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -250,26 +262,20 @@ function toggleFavorite(toolId: string, event: MouseEvent) {
       </div>
     </div>
 
-    <!-- Bottom Actions: Theme & Expand -->
-    <div class="p-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs text-slate-500">
+    <!-- Bottom Actions: Theme Toggle -->
+    <div
+      :class="[
+        'p-2 border-t border-slate-200 dark:border-slate-800 flex items-center text-xs text-slate-500',
+        isCollapsed ? 'justify-center' : 'justify-between'
+      ]"
+    >
       <button
         @click="themeStore.toggleTheme"
         :title="themeStore.isDark ? '切换至明亮模式' : '切换至暗色模式'"
         class="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-colors"
       >
-        <span v-if="themeStore.isDark">🌙 暗色</span>
-        <span v-else>☀️ 明亮</span>
-      </button>
-
-      <button
-        v-if="isCollapsed"
-        @click="isCollapsed = !isCollapsed"
-        title="展开侧边栏"
-        class="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400 transition-colors"
-      >
-        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-        </svg>
+        <span>{{ themeStore.isDark ? '🌙' : '☀️' }}</span>
+        <span v-if="!isCollapsed">{{ themeStore.isDark ? '暗色' : '明亮' }}</span>
       </button>
     </div>
   </aside>

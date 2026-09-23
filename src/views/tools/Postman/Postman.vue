@@ -23,6 +23,7 @@ import {
   getMethodBg,
   KeyValueItem
 } from './types'
+import { shortcutLabel } from '@/utils/platform'
 
 const props = defineProps<{
   tabId: string
@@ -576,7 +577,7 @@ onBeforeUnmount(() => {
             <path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
           </svg>
           <span>发送</span>
-          <kbd class="hidden sm:inline font-mono text-[10px] opacity-70 bg-white/20 px-1 py-0.5 rounded">⌘↵</kbd>
+          <kbd class="hidden sm:inline font-mono text-[10px] opacity-70 bg-white/20 px-1 py-0.5 rounded">{{ shortcutLabel('↵') }}</kbd>
         </button>
 
         <!-- Divider -->

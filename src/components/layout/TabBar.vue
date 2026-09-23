@@ -2,6 +2,7 @@
 import { useTabStore } from '@/stores/tabStore'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 import { getToolById } from '@/types/tool'
+import { shortcutLabel } from '@/utils/platform'
 
 const tabStore = useTabStore()
 const { open: openCommandPalette } = useCommandPalette()
@@ -72,7 +73,7 @@ function handleTabMiddleClick(tabId: string, event: MouseEvent) {
       <!-- Quick Add Tab Button -->
       <button
         @click="openCommandPalette"
-        title="新建工具标签 (⌘K)"
+        :title="`新建工具标签 (${shortcutLabel('K')})`"
         class="flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-200 transition-colors shrink-0"
       >
         <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
