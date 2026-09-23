@@ -58,13 +58,19 @@ Run:
 ```bash
 node --input-type=module -e "import { stringify } from 'yaml'; console.log(JSON.stringify(stringify({a:{b:[1,2]}}, {collectionStyle:'flow'})))"
 ```
-Expected: 输出单行 flow 风格，形如 `"{\"a\": {\"b\": [1, 2]}}\n"`。若该选项报错或输出仍是多行，读 `node_modules/yaml/dist/options.d.ts` 里 `StringifyOptions` 的实际选项名（例如 `flowLevel`），并在 Step 4 中改用确认后的名字。
+Expected: 输出单行 flow 风格 `"{ a: { b: [ 1, 2 ] } }\n"`。已实测确认（yaml 2.9.1）。
+
+再跑一条探测，确认库里对非常规 tag 的默认行为：
+```bash
+node --input-type=module -e "import { parseAllDocuments } from 'yaml'; for (const s of ['data: !!binary \"aGk=\"', 'data: !custom foo']) { const d = parseAllDocuments(s)[0]; console.log(s, '| errors:', d.errors.length); }"
+```
+Expected: 两条都输出 `errors: 0`——**库不会自己报错**，`!!binary` 会被解析成 Buffer、`!custom` 会被静默接受。因此适配层必须自己遍历文档树、按 tag 白名单拦下它们（见 Step 5 的 `findUnsupportedTag`），否则会把 Buffer / 未知对象喂给 JSON 序列化。
 
 Run:
 ```bash
 node --input-type=module -e "import { parse } from 'smol-toml'; try { parse('a = ') } catch (e) { console.log(JSON.stringify({keys:Object.keys(e), line:e.line, column:e.column, message:e.message})) }"
 ```
-Expected: `keys` 里包含 `line` 与 `column`。若字段名不同，读 `node_modules/smol-toml/dist/index.d.ts` 确认后调整 Step 6 的 `toIssue`。
+Expected: `keys` 里包含 `line` 与 `column`（已实测确认，smol-toml 1.9.0：`a = ` 报 `line:1, column:5`，重复键报 `line:3, column:1`）。
 
 - [ ] **Step 3: 写失败测试**
 
@@ -89,7 +95,7 @@ describe('yamlAdapter 解析', () => {
 
   it('锚点与引用就地展开为独立副本', () => {
     const { value } = parseYamlSource('base: &b\n  x: 1\ncopy: *b')
-    expect(value).toEqual({ base: { x: 1 }, copy: { x: 1 } })
+    expect(value).toEqual({ base: { x: 1n }, copy: { x: 1n } })
   })
 
   it('非常规 tag 报错而不是抛异常', () => {
@@ -290,7 +296,7 @@ export function stringifyTomlSource(value: unknown): string {
 - [ ] **Step 7: 运行测试确认通过**
 
 Run: `npx vitest run src/utils/__tests__`
-Expected: PASS（12 个用例全绿）。若 `compact` 或行列断言的期望值不符，以 Step 2 探测到的真实 API 行为为准修正**适配层实现**，不要放宽断言。
+Expected: PASS（14 个用例全绿）。若 `compact` 或行列断言的期望值不符，以 Step 2 探测到的真实 API 行为为准修正**适配层实现**，不要放宽断言。
 
 - [ ] **Step 8: 跑全量测试并提交**
 
@@ -1828,3 +1834,4 @@ Expected: 无未提交改动。
 汇报内容：新增的 3 个工具与各自 utils/测试文件、快照字段、新增的两个依赖、跑过的验证命令与结果、以及批次 C 的衔接点（SSH 指纹、SQL 格式化）。
 spec §4.4 把校验与格式化拆成 `validateYaml` + `formatYaml` 两个函数；本计划合并为单个 `validateYaml(text, mode)`，因为格式化输出只在解析成功后产生，合并后避免重复解析一次。
 spec §5.4 把校验与格式化拆成 `validateToml` + `formatToml` 两个函数；本计划合并为单个 `validateToml(text)`，理由同上。
+> **实测差异（以仓库代码为准）**：本 Step 的示意代码里 `findUnsupportedTag` 用 `Parameters<typeof visit>[0]` + `as never` 强转；实际落地改为 `Document` 类型 + `visit(doc, {...})`，并把 `check` 参数写成 `{ tag?: unknown; range?: readonly number[] | null }`——`range` 可能是 `null`，写成 `number[]` 会让 `vue-tsc` 报错。另外解析时额外传入 `lineCounter`，用于给 tag 问题定位行列。
