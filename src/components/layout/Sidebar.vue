@@ -44,8 +44,8 @@ const displayedTools = computed(() => {
   })
 })
 
-function getOpenInstancesCount(toolId: string): number {
-  return tabStore.openTabs.filter(t => t.toolId === toolId).length
+function isToolOpen(toolId: string): boolean {
+  return tabStore.openTabs.some(t => t.toolId === toolId)
 }
 
 function handleToolClick(tool: ToolDefinition) {
@@ -205,7 +205,7 @@ function toggleFavorite(toolId: string, event: MouseEvent) {
         :title="tool.description"
         :class="[
           'group flex items-center gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-colors text-xs',
-          getOpenInstancesCount(tool.id) > 0
+          isToolOpen(tool.id)
             ? 'bg-slate-200/50 dark:bg-slate-900/80 text-slate-900 dark:text-slate-100 font-medium'
             : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-900'
         ]"
@@ -236,15 +236,8 @@ function toggleFavorite(toolId: string, event: MouseEvent) {
           <span class="text-[10px] text-slate-400 truncate">{{ tool.description }}</span>
         </div>
 
-        <!-- Right Side: Instances count & Star favorite -->
+        <!-- Right Side: Star favorite -->
         <div v-if="!isCollapsed" class="flex items-center gap-1 shrink-0">
-          <span
-            v-if="getOpenInstancesCount(tool.id) > 0"
-            class="px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 font-semibold"
-            title="已打开实例数"
-          >
-            {{ getOpenInstancesCount(tool.id) }}
-          </span>
 
           <button
             @click="toggleFavorite(tool.id, $event)"

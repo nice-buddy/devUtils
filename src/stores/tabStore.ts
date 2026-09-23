@@ -133,6 +133,27 @@ export const useTabStore = defineStore('tabs', () => {
           }
         })
 
+        // 单例：历史数据里可能存在同一工具的多个标签，按 toolId 去重，保留最后访问的那条
+        const keptByTool = new Map<string, TabItem>()
+        const droppedTabs: TabItem[] = []
+        for (const tab of openTabs.value) {
+          const kept = keptByTool.get(tab.toolId)
+          if (!kept) {
+            keptByTool.set(tab.toolId, tab)
+            continue
+          }
+          if (tab.lastActive > kept.lastActive) {
+            keptByTool.set(tab.toolId, tab)
+            droppedTabs.push(kept)
+          } else {
+            droppedTabs.push(tab)
+          }
+        }
+        if (droppedTabs.length > 0) {
+          const droppedIds = new Set(droppedTabs.map(t => t.id))
+          openTabs.value = openTabs.value.filter(t => !droppedIds.has(t.id))
+          for (const id of droppedIds) persistDeleteTabFromDb(id)
+        }
         const settings = await invoke<any[]>('db_query', {
           query: "SELECT value FROM sys_settings WHERE key = 'active_tab_id'",
           params: []
@@ -155,6 +176,12 @@ export const useTabStore = defineStore('tabs', () => {
   }
 
   function openTab(toolId: string, title?: string): string {
+    // 单例：同一工具只保留一个标签，重复打开只做激活
+    const existing = openTabs.value.find(t => t.toolId === toolId)
+    if (existing) {
+      activateTab(existing.id)
+      return existing.id
+    }
     const newId = `${toolId}_${nanoid(8)}`
     const newTab: TabItem = {
       id: newId,

@@ -1,22 +1,64 @@
 import { setActivePinia, createPinia } from 'pinia'
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { useTabStore } from '../tabStore'
 
-describe('tabStore 多实例管理与 LRU 淘汰', () => {
+const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }))
+vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }))
+
+describe('tabStore 单例标签与 LRU 淘汰', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    invokeMock.mockReset()
+    invokeMock.mockResolvedValue([])
   })
 
-  it('支持同一工具打开多个独立 Tab 实例', () => {
+  it('同一工具重复打开复用同一个 Tab', () => {
     const store = useTabStore()
     const tab1 = store.openTab('postman', '请求 1')
     const tab2 = store.openTab('postman', '请求 2')
 
-    expect(store.openTabs.length).toBe(2)
-    expect(tab1).not.toBe(tab2)
-    expect(store.activeTabId).toBe(tab2)
+    expect(store.openTabs.length).toBe(1)
+    expect(tab1).toBe(tab2)
+    expect(store.activeTabId).toBe(tab1)
     expect(tab1).toContain('postman_')
-    expect(tab2).toContain('postman_')
+  })
+
+  it('切到其它工具后再点回来，仍复用原 Tab 且不新增', () => {
+    const store = useTabStore()
+    const postman = store.openTab('postman', '请求 1')
+    const json = store.openTab('json-suite', 'JSON')
+
+    expect(store.openTabs.length).toBe(2)
+    expect(store.activeTabId).toBe(json)
+
+    const again = store.openTab('postman', '请求 1')
+
+    expect(again).toBe(postman)
+    expect(store.openTabs.length).toBe(2)
+    expect(store.activeTabId).toBe(postman)
+  })
+
+  it('从 SQLite 恢复时按 toolId 去重，只保留最后访问的那条', async () => {
+    const store = useTabStore()
+    invokeMock.mockImplementation(async (cmd: any, args: any) => {
+      if (cmd !== 'db_query') return []
+      if (String(args?.query ?? '').includes('tool_state_snapshots')) {
+        return [
+          { tab_id: 'postman_a', tool_id: 'postman', title: '请求 1', sort_order: 0, snapshot_data_json: '{}' },
+          { tab_id: 'json-suite_b', tool_id: 'json-suite', title: 'JSON', sort_order: 1, snapshot_data_json: '{}' },
+          { tab_id: 'postman_c', tool_id: 'postman', title: '请求 2', sort_order: 2, snapshot_data_json: '{"x":1}' }
+        ]
+      }
+      return []
+    })
+
+    await store.restoreTabsFromDb()
+
+    expect(store.openTabs.map(t => t.toolId).sort()).toEqual(['json-suite', 'postman'])
+    const postmanTabs = store.openTabs.filter(t => t.toolId === 'postman')
+    expect(postmanTabs).toHaveLength(1)
+    expect(postmanTabs[0].id).toBe('postman_c')
+    expect(postmanTabs[0].snapshot).toEqual({ x: 1 })
   })
 
   it('当 Tab 超过 5 个时，将最久未访问的 Tab 从 keepAlive 中剔除以释放 DOM', () => {
