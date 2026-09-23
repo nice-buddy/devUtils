@@ -30,6 +30,7 @@ const RadixCase = defineAsyncComponent(() => import('@/views/tools/RadixCase/Rad
 const ChmodCalc = defineAsyncComponent(() => import('@/views/tools/ChmodCalc/ChmodCalc.vue'))
 const YamlPropJson = defineAsyncComponent(() => import('@/views/tools/YamlPropJson/YamlPropJson.vue'))
 const YamlValidator = defineAsyncComponent(() => import('@/views/tools/YamlValidator/YamlValidator.vue'))
+const TomlValidator = defineAsyncComponent(() => import('@/views/tools/TomlValidator/TomlValidator.vue'))
 const PasswordSsh = defineAsyncComponent(() => import('@/views/tools/PasswordSsh/PasswordSsh.vue'))
 
 const tabStore = useTabStore()
@@ -79,6 +80,9 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'yaml-validator' || toolId === 'yaml_validator') {
     return YamlValidator
+  }
+  if (toolId === 'toml-validator' || toolId === 'toml_validator') {
+    return TomlValidator
   }
   return ToolPlaceholder
 }

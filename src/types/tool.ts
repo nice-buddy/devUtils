@@ -97,6 +97,14 @@ export const TOOLS: ToolDefinition[] = [
     keywords: ['yaml', 'yml', 'validate', 'lint', '校验']
   },
   {
+    id: 'toml-validator',
+    name: 'TOML 语法校验器',
+    description: 'TOML 语法校验、行列错误定位与格式化输出',
+    category: 'format',
+    icon: 'CheckCircle',
+    keywords: ['toml', 'validate', 'lint', '校验']
+  },
+  {
     id: 'json-to-types',
     name: 'JSON 转强类型结构体',
     description: '输入 JSON 自动推导生成 TypeScript、Go、Java POJO/Record、Rust Struct',
