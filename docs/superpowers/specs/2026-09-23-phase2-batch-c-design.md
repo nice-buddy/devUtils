@@ -254,5 +254,6 @@ src/views/tools/<ToolName>/
 ## 6. 后续衔接
 
 - 第二阶段（P0 开发者高频工具）在本批次后全部交付完毕。
-- 第三期（P1）工具（WebSocket 调试、JWT 解析、Excel/CSV 转 JSON、图片与 Base64、Markdown 预览等）各自走完整的「设计 → 计划 → 实现」循环。
+- 第三期（P1）工具（WebSocket 调试、JWT 解析、图片与 Base64、Markdown 预览等）各自走完整的「设计 → 计划 → 实现」循环。
+- **Excel / CSV 文本转 JSON 与多方言 SQL（总设计 `p3_3`）已明确归入第三期**：本批次不做，`src/types/tool.ts` 也无需为它新增注册项。
 - 本批次引入的 `@noble/hashes` 可在第三期需要哈希/摘要的能力中复用。
