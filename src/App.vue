@@ -31,6 +31,7 @@ const ChmodCalc = defineAsyncComponent(() => import('@/views/tools/ChmodCalc/Chm
 const YamlPropJson = defineAsyncComponent(() => import('@/views/tools/YamlPropJson/YamlPropJson.vue'))
 const YamlValidator = defineAsyncComponent(() => import('@/views/tools/YamlValidator/YamlValidator.vue'))
 const TomlValidator = defineAsyncComponent(() => import('@/views/tools/TomlValidator/TomlValidator.vue'))
+const SqlFormatter = defineAsyncComponent(() => import('@/views/tools/SqlFormatter/SqlFormatter.vue'))
 const PasswordSsh = defineAsyncComponent(() => import('@/views/tools/PasswordSsh/PasswordSsh.vue'))
 
 const tabStore = useTabStore()
@@ -83,6 +84,9 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'toml-validator' || toolId === 'toml_validator') {
     return TomlValidator
+  }
+  if (toolId === 'sql-formatter' || toolId === 'sql_formatter') {
+    return SqlFormatter
   }
   return ToolPlaceholder
 }
