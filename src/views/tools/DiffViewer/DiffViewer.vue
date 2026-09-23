@@ -858,17 +858,21 @@ onBeforeUnmount(() => {
                       ? 'bg-slate-50/40 dark:bg-slate-900/20'
                       : 'text-slate-800 dark:text-slate-200'
                   ]"
+                  :title="row.left.text"
                 >
-                  <template v-if="row.left.inline_spans && row.left.inline_spans.length > 0">
-                    <span
-                      v-for="(span, sIdx) in row.left.inline_spans"
-                      :key="sIdx"
-                      :class="span.tag === 'delete' ? 'bg-rose-200 dark:bg-rose-900/80 text-rose-950 dark:text-rose-100 rounded-[2px] px-[1px] font-semibold' : ''"
-                    >{{ span.text }}</span>
-                  </template>
-                  <template v-else>
-                    {{ row.left.text }}
-                  </template>
+                  <!-- 固定行高依赖不换行，超出部分需要裁切，避免覆盖相邻列 -->
+                  <span class="block overflow-hidden">
+                    <template v-if="row.left.inline_spans && row.left.inline_spans.length > 0">
+                      <span
+                        v-for="(span, sIdx) in row.left.inline_spans"
+                        :key="sIdx"
+                        :class="span.tag === 'delete' ? 'bg-rose-200 dark:bg-rose-900/80 text-rose-950 dark:text-rose-100 rounded-[2px] px-[1px] font-semibold' : ''"
+                      >{{ span.text }}</span>
+                    </template>
+                    <template v-else>
+                      {{ row.left.text }}
+                    </template>
+                  </span>
                 </td>
 
                 <!-- Right Line Number -->
@@ -909,17 +913,20 @@ onBeforeUnmount(() => {
                       ? 'bg-slate-50/40 dark:bg-slate-900/20'
                       : 'text-slate-800 dark:text-slate-200'
                   ]"
+                  :title="row.right.text"
                 >
-                  <template v-if="row.right.inline_spans && row.right.inline_spans.length > 0">
-                    <span
-                      v-for="(span, sIdx) in row.right.inline_spans"
-                      :key="sIdx"
-                      :class="span.tag === 'insert' ? 'bg-emerald-200 dark:bg-emerald-900/80 text-emerald-950 dark:text-emerald-100 rounded-[2px] px-[1px] font-semibold' : ''"
-                    >{{ span.text }}</span>
-                  </template>
-                  <template v-else>
-                    {{ row.right.text }}
-                  </template>
+                  <span class="block overflow-hidden">
+                    <template v-if="row.right.inline_spans && row.right.inline_spans.length > 0">
+                      <span
+                        v-for="(span, sIdx) in row.right.inline_spans"
+                        :key="sIdx"
+                        :class="span.tag === 'insert' ? 'bg-emerald-200 dark:bg-emerald-900/80 text-emerald-950 dark:text-emerald-100 rounded-[2px] px-[1px] font-semibold' : ''"
+                      >{{ span.text }}</span>
+                    </template>
+                    <template v-else>
+                      {{ row.right.text }}
+                    </template>
+                  </span>
                 </td>
               </tr>
 
@@ -1031,17 +1038,19 @@ onBeforeUnmount(() => {
                 </td>
 
                 <!-- Content with Character-level Highlight -->
-                <td class="py-0.5 px-2.5 whitespace-pre font-mono">
-                  <template v-if="row.inline_spans && row.inline_spans.length > 0">
-                    <span
-                      v-for="(span, sIdx) in row.inline_spans"
-                      :key="sIdx"
-                      :class="span.tag === 'delete' ? 'bg-rose-200 dark:bg-rose-900/80 text-rose-950 dark:text-rose-100 rounded-[2px] px-[1px] font-semibold' : span.tag === 'insert' ? 'bg-emerald-200 dark:bg-emerald-900/80 text-emerald-950 dark:text-emerald-100 rounded-[2px] px-[1px] font-semibold' : ''"
-                    >{{ span.text }}</span>
-                  </template>
-                  <template v-else>
-                    {{ row.text }}
-                  </template>
+                <td class="py-0.5 px-2.5 whitespace-pre font-mono" :title="row.text">
+                  <span class="block overflow-hidden">
+                    <template v-if="row.inline_spans && row.inline_spans.length > 0">
+                      <span
+                        v-for="(span, sIdx) in row.inline_spans"
+                        :key="sIdx"
+                        :class="span.tag === 'delete' ? 'bg-rose-200 dark:bg-rose-900/80 text-rose-950 dark:text-rose-100 rounded-[2px] px-[1px] font-semibold' : span.tag === 'insert' ? 'bg-emerald-200 dark:bg-emerald-900/80 text-emerald-950 dark:text-emerald-100 rounded-[2px] px-[1px] font-semibold' : ''"
+                      >{{ span.text }}</span>
+                    </template>
+                    <template v-else>
+                      {{ row.text }}
+                    </template>
+                  </span>
                 </td>
               </tr>
 

@@ -63,6 +63,13 @@ pub struct HttpResponsePayload {
     pub size_bytes: usize,
 }
 
+/// 超过该体积的响应体不再整体驻留内存，改为边接收边写入临时缓存文件
+const LARGE_RESPONSE_THRESHOLD_BYTES: usize = 5 * 1024 * 1024;
+/// 大响应返回给前端的文本预览长度
+const LARGE_RESPONSE_PREVIEW_BYTES: usize = 1024 * 1024;
+/// 预览缓冲区额外多留 4 字节，便于回退到完整的 UTF-8 字符边界
+const RESPONSE_PREVIEW_BUFFER_BYTES: usize = LARGE_RESPONSE_PREVIEW_BYTES + 4;
+
 #[tauri::command]
 pub async fn http_execute(
     req: HttpRequestPayload,
@@ -249,13 +256,22 @@ pub async fn http_execute(
 
     let mut response = response;
     let mut bytes_acc = Vec::new();
+    // 无论走内存还是临时文件，都单独保留响应开头的一段字节用于预览，
+    // 避免首个数据块即超过阈值时拿不到任何正文。
+    let mut preview_prefix: Vec<u8> = Vec::with_capacity(RESPONSE_PREVIEW_BUFFER_BYTES);
     let mut total_size: usize = 0;
     let mut temp_file: Option<tokio::fs::File> = None;
     let mut temp_file_path: Option<String> = None;
 
     while let Some(chunk) = response.chunk().await.map_err(|e| format!("接收响应数据流失败: {}", e))? {
         total_size += chunk.len();
-        if total_size > 5 * 1024 * 1024 && temp_file.is_none() {
+
+        if preview_prefix.len() < RESPONSE_PREVIEW_BUFFER_BYTES {
+            let remaining = RESPONSE_PREVIEW_BUFFER_BYTES - preview_prefix.len();
+            preview_prefix.extend_from_slice(&chunk[..remaining.min(chunk.len())]);
+        }
+
+        if total_size > LARGE_RESPONSE_THRESHOLD_BYTES && temp_file.is_none() {
             let temp_path = std::env::temp_dir().join(format!("devutils_resp_{}.bin", uuid::Uuid::new_v4()));
             let mut file = tokio::fs::File::create(&temp_path).await.map_err(|e| format!("创建临时缓存文件失败: {}", e))?;
             file.write_all(&bytes_acc).await.map_err(|e| format!("写入临时缓存文件失败: {}", e))?;
@@ -276,7 +292,7 @@ pub async fn http_execute(
 
     let duration_ms = start_time.elapsed().as_millis() as u64;
     let size_bytes = total_size;
-    let is_large = size_bytes > 5 * 1024 * 1024;
+    let is_large = size_bytes > LARGE_RESPONSE_THRESHOLD_BYTES;
 
     let is_image = content_type.starts_with("image/");
     let is_binary_mime = is_image
@@ -293,22 +309,23 @@ pub async fn http_execute(
         if is_binary_mime {
             (true, String::new(), None)
         } else {
-            let mut preview_len = (1024 * 1024).min(bytes_acc.len());
+            let mut preview_len = LARGE_RESPONSE_PREVIEW_BYTES.min(preview_prefix.len());
             // 如果截断处落在多字节 UTF-8 字符序列中间，向左回退到字符起始边界
-            if preview_len < bytes_acc.len() {
-                while preview_len > 0 && (bytes_acc[preview_len] & 0b1100_0000) == 0b1000_0000 {
-                    preview_len -= 1;
-                }
+            while preview_len > 0
+                && preview_len < preview_prefix.len()
+                && (preview_prefix[preview_len] & 0b1100_0000) == 0b1000_0000
+            {
+                preview_len -= 1;
             }
 
             // 检查前 4096 字节是否包含空字节以判定是否为二进制流
-            let has_nul = bytes_acc[..preview_len.min(4096)].contains(&0u8);
+            let has_nul = preview_prefix[..preview_len.min(4096)].contains(&0u8);
             if has_nul {
                 (true, String::new(), None)
             } else {
-                let preview_text = match std::str::from_utf8(&bytes_acc[..preview_len]) {
+                let preview_text = match std::str::from_utf8(&preview_prefix[..preview_len]) {
                     Ok(utf8_str) => utf8_str.to_string(),
-                    Err(_) => String::from_utf8_lossy(&bytes_acc[..preview_len]).into_owned(),
+                    Err(_) => String::from_utf8_lossy(&preview_prefix[..preview_len]).into_owned(),
                 };
                 let mut preview = preview_text;
                 preview.push_str("\n\n... [已自动开启大文本保护：响应体大于 5MB，仅展示前 1MB 预览。完整内容已保存至临时缓存文件] ...");

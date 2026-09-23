@@ -9,6 +9,12 @@ import EnvironmentModal from './components/EnvironmentModal.vue'
 import CollectionDrawer, { SavedRequestItem } from './components/CollectionDrawer.vue'
 import { parseCurl, exportToCurl } from './utils/curlParser'
 import {
+  applyHistoryRequestPayload,
+  cloneWithoutTempFile,
+  toPostmanResponse,
+  type HttpIpcResponse
+} from './utils/responseMapper'
+import {
   PostmanRequestModel,
   PostmanResponseModel,
   HistoryItem,
@@ -68,7 +74,10 @@ function createDefaultRequest(): PostmanRequestModel {
 const request = ref<PostmanRequestModel>(
   props.initialSnapshot?.request ? JSON.parse(JSON.stringify(props.initialSnapshot.request)) : createDefaultRequest()
 )
-const response = ref<PostmanResponseModel | null>(props.initialSnapshot?.response ?? null)
+// 快照恢复时同样丢弃临时缓存路径，兼容历史遗留的快照数据
+const response = ref<PostmanResponseModel | null>(
+  cloneWithoutTempFile(props.initialSnapshot?.response)
+)
 const loading = ref(false)
 const errorMessage = ref<string | null>(null)
 
@@ -147,7 +156,7 @@ function handleLoadSavedRequest(saved: SavedRequestItem) {
 function saveSnapshot() {
   tabStore.updateTabSnapshot(props.tabId, {
     request: JSON.parse(JSON.stringify(request.value)),
-    response: response.value ? JSON.parse(JSON.stringify(response.value)) : null
+    response: cloneWithoutTempFile(response.value)
   })
 }
 
@@ -339,31 +348,9 @@ async function handleSend() {
       proxy: request.value.settings.proxy?.trim() || null
     }
 
-    const result = await invoke<{
-      status: number
-      statusText: string
-      headers: Record<string, string>
-      body: string
-      bodyBase64?: string | null
-      isBinary?: boolean
-      isLarge?: boolean
-      tempFilePath?: string | null
-      durationMs: number
-      sizeBytes: number
-    }>('http_execute', { req: payload })
+    const result = await invoke<HttpIpcResponse>('http_execute', { req: payload })
 
-    response.value = {
-      status: result.status,
-      statusText: result.statusText,
-      headers: result.headers,
-      body: result.body,
-      bodyBase64: result.bodyBase64,
-      isBinary: result.isBinary,
-      isLarge: result.isLarge,
-      tempFilePath: result.tempFilePath,
-      durationMs: result.durationMs,
-      sizeBytes: result.sizeBytes
-    }
+    response.value = toPostmanResponse(result)
 
     saveSnapshot()
 
@@ -408,36 +395,8 @@ function restoreFromHistory(item: HistoryItem) {
   if (item.requestDataJson) {
     try {
       const parsedReq = JSON.parse(item.requestDataJson)
-      request.value.method = parsedReq.method || 'GET'
-      request.value.url = parsedReq.url || ''
-      request.value.headers = parsedReq.headers || []
-      request.value.params = parsedReq.params || []
-      request.value.bodyType = parsedReq.bodyType || parsedReq.body_type || 'none'
-      request.value.rawType = parsedReq.rawType || parsedReq.raw_type || 'json'
-      request.value.bodyRaw = parsedReq.bodyRaw || parsedReq.body_raw || ''
-      request.value.formData = (parsedReq.formData || parsedReq.form_data || []).map((f: any) => ({
-        key: f.key || '',
-        value: f.value || '',
-        enabled: f.enabled !== false,
-        itemType: f.itemType || f.item_type || 'text'
-      }))
-      request.value.urlencodedData = parsedReq.urlencodedData || parsedReq.urlencoded_data || []
-      request.value.binaryFilePath = parsedReq.binaryFilePath || parsedReq.binary_file_path || ''
 
-      const timeoutMs = parsedReq.timeoutMs || parsedReq.timeout_ms
-      if (timeoutMs !== undefined) request.value.settings.timeoutMs = timeoutMs
-      const ignoreSsl = parsedReq.ignoreSsl !== undefined ? parsedReq.ignoreSsl : parsedReq.ignore_ssl
-      if (ignoreSsl !== undefined) request.value.settings.ignoreSsl = ignoreSsl
-      const followRedirects = parsedReq.followRedirects !== undefined ? parsedReq.followRedirects : parsedReq.follow_redirects
-      if (followRedirects !== undefined) request.value.settings.followRedirects = followRedirects
-      if (parsedReq.proxy !== undefined) request.value.settings.proxy = parsedReq.proxy
-
-      if (parsedReq.auth) {
-        request.value.auth = {
-          ...request.value.auth,
-          ...parsedReq.auth
-        }
-      }
+      applyHistoryRequestPayload(request.value, parsedReq)
 
       saveSnapshot()
       message.success(`已恢复历史请求: ${item.method} ${item.url}`)

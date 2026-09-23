@@ -69,7 +69,7 @@ pub enum HasherEngine {
 
 impl HasherEngine {
     pub fn try_new(algo: &str) -> Result<Self, String> {
-        let norm = algo.trim().to_lowercase().replace('-', "").replace('_', "");
+        let norm = algo.trim().to_lowercase().replace(['-', '_'], "");
         match norm.as_str() {
             "md5" | "md532" => Ok(HasherEngine::Md5 {
                 inner: md5::Md5::new(),
@@ -119,7 +119,7 @@ impl HasherEngine {
 }
 
 fn compute_hmac(text: &[u8], key: &[u8], algo: &str) -> Result<String, String> {
-    let norm = algo.trim().to_lowercase().replace('-', "").replace('_', "");
+    let norm = algo.trim().to_lowercase().replace(['-', '_'], "");
     match norm.as_str() {
         "md5" | "md532" => {
             let mut mac = Hmac::<md5::Md5>::new_from_slice(key)

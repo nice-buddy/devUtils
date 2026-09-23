@@ -6,6 +6,13 @@ import { invoke } from '@tauri-apps/api/core'
 import { LosslessJSON, formatJson, minifyJson } from '@/views/tools/JsonSuite/utils/losslessJson'
 import { convertTimestamp, timestampToDate, dateToTimestamp } from '@/views/tools/TimestampCron/utils/timeConverter'
 import { parseCurl, exportToCurl } from '@/views/tools/Postman/utils/curlParser'
+import {
+  applyHistoryRequestPayload,
+  cloneWithoutTempFile,
+  toPostmanResponse,
+  type HttpIpcResponse
+} from '@/views/tools/Postman/utils/responseMapper'
+import type { PostmanRequestModel } from '@/views/tools/Postman/types'
 import { useTabStore } from '@/stores/tabStore'
 
 vi.mock('@tauri-apps/api/core', () => ({
@@ -18,6 +25,31 @@ const stringifyLosslessJson = (val: any, replacer?: any, space?: string | number
   LosslessJSON.stringify(val, replacer, space)
 const parseCurlCommand = parseCurl
 const generateCurlCommand = exportToCurl
+
+function createBlankRequestModel(): PostmanRequestModel {
+  return {
+    method: 'GET',
+    url: '',
+    params: [],
+    headers: [],
+    bodyType: 'none',
+    rawType: 'text',
+    bodyRaw: '',
+    formData: [],
+    urlencodedData: [],
+    binaryFilePath: '',
+    auth: {
+      type: 'none',
+      bearerToken: '',
+      basicUsername: '',
+      basicPassword: '',
+      apiKeyName: 'X-API-KEY',
+      apiKeyValue: '',
+      apiKeyAddTo: 'header'
+    },
+    settings: { ignoreSsl: false, followRedirects: true, timeoutMs: 30000, proxy: '' }
+  }
+}
 
 describe('CI 自动化集成验收测试套件 (CI Acceptance Suite)', () => {
   // ============================================================================
@@ -270,8 +302,8 @@ describe('CI 自动化集成验收测试套件 (CI Acceptance Suite)', () => {
       expect(streamLargeResponse.tempFilePath).toContain('devutils_large_resp_12345.bin')
     })
 
-    it('Postman IPC 响应结果严格遵循 camelCase 并完整映射至 PostmanResponseModel', () => {
-      const ipcResult = {
+    it('Postman IPC 响应经 toPostmanResponse 映射后字段完整可用（camelCase 契约）', () => {
+      const ipcResult: HttpIpcResponse = {
         status: 200,
         statusText: 'OK',
         headers: { 'content-type': 'image/png' },
@@ -279,30 +311,41 @@ describe('CI 自动化集成验收测试套件 (CI Acceptance Suite)', () => {
         bodyBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
         isBinary: true,
         isLarge: false,
-        tempFilePath: null,
+        tempFilePath: '/var/folders/temp/devutils_resp_abc.bin',
         durationMs: 48,
         sizeBytes: 68
       }
 
-      const responseModel = {
-        status: ipcResult.status,
-        statusText: ipcResult.statusText,
-        headers: ipcResult.headers,
-        body: ipcResult.body,
-        bodyBase64: ipcResult.bodyBase64,
-        isBinary: ipcResult.isBinary,
-        isLarge: ipcResult.isLarge,
-        tempFilePath: ipcResult.tempFilePath,
-        durationMs: ipcResult.durationMs,
-        sizeBytes: ipcResult.sizeBytes
-      }
+      const responseModel = toPostmanResponse(ipcResult)
 
+      expect(responseModel.status).toBe(200)
       expect(responseModel.statusText).toBe('OK')
       expect(responseModel.durationMs).toBe(48)
       expect(responseModel.sizeBytes).toBe(68)
       expect(responseModel.isBinary).toBe(true)
       expect(responseModel.bodyBase64).toBeTruthy()
-      expect(responseModel.tempFilePath).toBeNull()
+      expect(responseModel.tempFilePath).toBe('/var/folders/temp/devutils_resp_abc.bin')
+    })
+
+    it('大响应缓存路径不写入快照，且恢复历史遗留快照时同样被丢弃', () => {
+      const withTempFile = toPostmanResponse({
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: 'preview-chunk...',
+        isLarge: true,
+        tempFilePath: '/var/folders/temp/devutils_resp_snapshot.bin',
+        durationMs: 310,
+        sizeBytes: 15 * 1024 * 1024
+      })
+
+      const snapshot = cloneWithoutTempFile(withTempFile)
+      expect(snapshot?.tempFilePath).toBeNull()
+      expect(snapshot?.body).toBe('preview-chunk...')
+      expect(snapshot?.sizeBytes).toBe(15 * 1024 * 1024)
+      // 不能修改原始响应对象，当前页面仍需展示缓存路径
+      expect(withTempFile.tempFilePath).toBe('/var/folders/temp/devutils_resp_snapshot.bin')
+      expect(cloneWithoutTempFile(null)).toBeNull()
     })
 
     it('Postman 历史记录能够从 camelCase 格式完备恢复 method/url/headers/bodyType/rawType/auth/settings', () => {
@@ -336,16 +379,46 @@ describe('CI 自动化集成验收测试套件 (CI Acceptance Suite)', () => {
         executedAt: Date.now()
       }
 
-      const parsedReq = JSON.parse(historyItem.requestDataJson)
-      expect(parsedReq.bodyType).toBe('raw')
-      expect(parsedReq.rawType).toBe('json')
-      expect(parsedReq.bodyRaw).toBe('{"itemId": 1001}')
-      expect(parsedReq.timeoutMs).toBe(15000)
-      expect(parsedReq.ignoreSsl).toBe(true)
-      expect(parsedReq.followRedirects).toBe(false)
-      expect(parsedReq.proxy).toBe('http://127.0.0.1:7890')
-      expect(parsedReq.auth.type).toBe('bearer')
-      expect(parsedReq.auth.bearerToken).toBe('test')
+      const target = applyHistoryRequestPayload(
+        createBlankRequestModel(),
+        JSON.parse(historyItem.requestDataJson)
+      )
+
+      expect(target.method).toBe('POST')
+      expect(target.url).toBe('https://api.devutils.io/order')
+      expect(target.headers).toEqual([{ key: 'Authorization', value: 'Bearer test', enabled: true }])
+      expect(target.bodyType).toBe('raw')
+      expect(target.rawType).toBe('json')
+      expect(target.bodyRaw).toBe('{"itemId": 1001}')
+      expect(target.settings.timeoutMs).toBe(15000)
+      expect(target.settings.ignoreSsl).toBe(true)
+      expect(target.settings.followRedirects).toBe(false)
+      expect(target.settings.proxy).toBe('http://127.0.0.1:7890')
+      expect(target.auth.type).toBe('bearer')
+      expect(target.auth.bearerToken).toBe('test')
+    })
+
+    it('历史恢复兼容旧版本 snake_case 记录', () => {
+      const target = applyHistoryRequestPayload(createBlankRequestModel(), {
+        method: 'PUT',
+        url: 'https://api.devutils.io/legacy',
+        body_type: 'x-www-form-urlencoded',
+        raw_type: 'text',
+        urlencoded_data: [{ key: 'page', value: '2', enabled: true }],
+        timeout_ms: 5000,
+        ignore_ssl: true,
+        follow_redirects: false,
+        binary_file_path: '/tmp/legacy.bin'
+      })
+
+      expect(target.method).toBe('PUT')
+      expect(target.bodyType).toBe('x-www-form-urlencoded')
+      expect(target.rawType).toBe('text')
+      expect(target.urlencodedData).toEqual([{ key: 'page', value: '2', enabled: true }])
+      expect(target.binaryFilePath).toBe('/tmp/legacy.bin')
+      expect(target.settings.timeoutMs).toBe(5000)
+      expect(target.settings.ignoreSsl).toBe(true)
+      expect(target.settings.followRedirects).toBe(false)
     })
   })
 

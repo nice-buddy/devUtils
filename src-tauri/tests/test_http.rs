@@ -297,4 +297,74 @@ async fn test_temp_file_cleanup_and_chinese_utf8_preview() {
     assert_eq!(valid_slice.unwrap(), "你");
 }
 
+#[tokio::test]
+async fn test_large_response_keeps_text_preview_and_spills_to_temp_file() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    tokio::spawn(async move {
+        if let Ok((mut socket, _)) = listener.accept().await {
+            let mut buf = [0u8; 1024];
+            let _ = socket.read(&mut buf).await;
+
+            // 6MB 文本响应，开头写入可识别标记用于校验预览来源
+            let mut body = String::from("PREVIEW_HEAD_MARKER\n");
+            while body.len() < 6 * 1024 * 1024 {
+                body.push_str("0123456789abcdef\n");
+            }
+            let header = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = socket.write_all(header.as_bytes()).await;
+            let _ = socket.write_all(body.as_bytes()).await;
+            let _ = socket.flush().await;
+        }
+    });
+
+    let conn = Connection::open_in_memory().await.unwrap();
+    devutils_lib::db::migrations::run_migrations(&conn).await.unwrap();
+    let state = DbState(Arc::new(conn));
+
+    let app = tauri::test::mock_app();
+    app.manage(state);
+    let tauri_state = app.state::<DbState>();
+
+    let req = HttpRequestPayload {
+        method: "GET".to_string(),
+        url: format!("http://127.0.0.1:{}", port),
+        headers: vec![],
+        params: vec![],
+        body_type: "none".to_string(),
+        raw_type: None,
+        body_raw: None,
+        form_data: vec![],
+        urlencoded_data: vec![],
+        binary_file_path: None,
+        timeout_ms: Some(30000),
+        ignore_ssl: Some(true),
+        follow_redirects: Some(true),
+        proxy: None,
+        auth: None,
+    };
+
+    let resp = http_execute(req, tauri_state)
+        .await
+        .expect("Large response request should succeed");
+
+    assert!(resp.is_large, "超过 5MB 的响应必须标记为大响应");
+    assert!(resp.size_bytes > 5 * 1024 * 1024);
+    assert!(!resp.is_binary, "JSON 文本大响应不应被判定为二进制");
+    assert!(resp.temp_file_path.is_some(), "大响应应写入临时缓存文件");
+    assert!(
+        resp.body.starts_with("PREVIEW_HEAD_MARKER"),
+        "大响应预览必须来自正文开头，实际以 {:?} 开头",
+        resp.body.chars().take(32).collect::<String>()
+    );
+    assert!(resp.body.contains("仅展示前 1MB 预览"));
+
+    if let Some(path) = resp.temp_file_path {
+        let _ = std::fs::remove_file(path);
+    }
+}
 
