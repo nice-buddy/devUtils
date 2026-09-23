@@ -89,6 +89,14 @@ export const TOOLS: ToolDefinition[] = [
     keywords: ['yaml', 'properties', 'json', 'convert']
   },
   {
+    id: 'yaml-validator',
+    name: 'YAML 语法校验器',
+    description: 'YAML 语法校验、行列错误定位与格式化 / 压缩输出',
+    category: 'format',
+    icon: 'CheckCircle',
+    keywords: ['yaml', 'yml', 'validate', 'lint', '校验']
+  },
+  {
     id: 'json-to-types',
     name: 'JSON 转强类型结构体',
     description: '输入 JSON 自动推导生成 TypeScript、Go、Java POJO/Record、Rust Struct',

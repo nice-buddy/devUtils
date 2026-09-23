@@ -29,6 +29,7 @@ const UrlParser = defineAsyncComponent(() => import('@/views/tools/UrlParser/Url
 const RadixCase = defineAsyncComponent(() => import('@/views/tools/RadixCase/RadixCase.vue'))
 const ChmodCalc = defineAsyncComponent(() => import('@/views/tools/ChmodCalc/ChmodCalc.vue'))
 const YamlPropJson = defineAsyncComponent(() => import('@/views/tools/YamlPropJson/YamlPropJson.vue'))
+const YamlValidator = defineAsyncComponent(() => import('@/views/tools/YamlValidator/YamlValidator.vue'))
 const PasswordSsh = defineAsyncComponent(() => import('@/views/tools/PasswordSsh/PasswordSsh.vue'))
 
 const tabStore = useTabStore()
@@ -75,6 +76,9 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'yaml-prop-json' || toolId === 'yaml_prop_json') {
     return YamlPropJson
+  }
+  if (toolId === 'yaml-validator' || toolId === 'yaml_validator') {
+    return YamlValidator
   }
   return ToolPlaceholder
 }
