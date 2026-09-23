@@ -24,6 +24,7 @@ const DiffViewer = defineAsyncComponent(() => import('@/views/tools/DiffViewer/D
 const Postman = defineAsyncComponent(() => import('@/views/tools/Postman/Postman.vue'))
 const EncodingHash = defineAsyncComponent(() => import('@/views/tools/EncodingHash/EncodingHash.vue'))
 const TimestampCron = defineAsyncComponent(() => import('@/views/tools/TimestampCron/TimestampCron.vue'))
+const JsonToTypes = defineAsyncComponent(() => import('@/views/tools/JsonToTypes/JsonToTypes.vue'))
 
 const tabStore = useTabStore()
 const themeStore = useThemeStore()
@@ -51,6 +52,9 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'timestamp-cron' || toolId === 'timestamp_cron') {
     return TimestampCron
+  }
+  if (toolId === 'json-to-types' || toolId === 'json_to_types') {
+    return JsonToTypes
   }
   return ToolPlaceholder
 }
