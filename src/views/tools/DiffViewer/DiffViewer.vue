@@ -1051,7 +1051,7 @@ onBeforeUnmount(() => {
           <span>差异跳转</span>
         </div>
         <div class="flex items-center gap-1.5">
-          <kbd class="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">{{ altShortcutLabel(' Enter') }}</kbd>
+          <kbd class="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">{{ altShortcutLabel(' ⏎') }}</kbd>
           <span>比对/编辑切换</span>
         </div>
       </div>
