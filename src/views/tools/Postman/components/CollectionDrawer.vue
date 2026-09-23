@@ -132,27 +132,34 @@ function getRequestsInCollection(colId: string) {
   return list
 }
 
-async function handleCreateCollection() {
-  dialog.create({
-    title: '新建请求集合目录',
-    content: () => '请输入新集合名称：',
-    // fallback with prompt or prompt input
-  })
-  const colName = window.prompt('请输入新接口集合目录名称：', '新建接口分类')
-  if (!colName || !colName.trim()) return
+const showCreateFolderModal = ref(false)
+const newFolderName = ref('')
+
+function openCreateFolderModal() {
+  newFolderName.value = ''
+  showCreateFolderModal.value = true
+}
+
+async function confirmCreateFolder() {
+  const colName = newFolderName.value.trim()
+  if (!colName) {
+    message.warning('请输入目录名称')
+    return
+  }
 
   const newId = `col_${nanoid(8)}`
   try {
     await invoke('db_execute', {
       query: 'INSERT INTO http_collections (id, parent_id, name, sort_order) VALUES (?1, NULL, ?2, ?3)',
-      params: [newId, colName.trim(), collections.value.length]
+      params: [newId, colName, collections.value.length]
     })
     collections.value.push({
       id: newId,
       parentId: null,
-      name: colName.trim(),
+      name: colName,
       sortOrder: collections.value.length
     })
+    showCreateFolderModal.value = false
     message.success('已新建集合分类')
   } catch {
     message.error('新建集合失败')
@@ -317,7 +324,7 @@ onMounted(() => {
             <span>收藏当前请求</span>
           </button>
           <button
-            @click="handleCreateCollection"
+            @click="openCreateFolderModal"
             class="py-1.5 px-3 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors shrink-0"
             title="新建集合分类目录"
           >
@@ -460,6 +467,44 @@ onMounted(() => {
             class="px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
           >
             确认收藏
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- New Collection Folder Modal Dialog -->
+    <div
+      v-if="showCreateFolderModal"
+      class="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4"
+    >
+      <div class="w-full max-w-sm bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
+        <div class="h-11 px-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <span class="text-sm font-bold text-slate-900 dark:text-slate-100">新建请求集合目录</span>
+          <button @click="showCreateFolderModal = false" class="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div class="p-4 flex flex-col gap-2">
+          <label class="text-xs text-slate-500 dark:text-slate-400">目录分类名称：</label>
+          <input
+            v-model="newFolderName"
+            @keyup.enter="confirmCreateFolder"
+            type="text"
+            placeholder="例如：用户中心、订单模块"
+            class="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200 outline-none focus:border-indigo-500"
+            autofocus
+          />
+        </div>
+        <div class="h-12 px-4 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
+          <button
+            @click="showCreateFolderModal = false"
+            class="px-3 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+          >
+            取消
+          </button>
+          <button
+            @click="confirmCreateFolder"
+            class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs"
+          >
+            确定创建
           </button>
         </div>
       </div>

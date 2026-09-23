@@ -212,11 +212,7 @@ watch(
 watch(activeTab, async (tab) => {
   if (tab === 'body' && props.modelValue.bodyType === 'raw') {
     await nextTick()
-    if (!editorView) {
-      initEditor()
-    } else {
-      editorView.requestMeasure()
-    }
+    initEditor()
   }
 })
 
@@ -493,7 +489,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 3. BODY TAB -->
-      <div v-if="activeTab === 'body'" class="h-full flex flex-col">
+      <div v-show="activeTab === 'body'" class="h-full flex flex-col">
         <!-- Body Type Radio Selector -->
         <div class="flex items-center gap-3 pb-2 border-b border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 shrink-0">
           <label class="flex items-center gap-1.5 cursor-pointer">

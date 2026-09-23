@@ -21,6 +21,9 @@ pub fn run() {
             app.manage(db_state);
             app.manage(commands::hash::HashCancelManager::new());
 
+            // 启动时清理残留的临时大响应缓存文件
+            commands::http::clean_all_temp_response_files();
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -28,6 +31,7 @@ pub fn run() {
             db::db_query,
             commands::diff::diff_text,
             commands::http::http_execute,
+            commands::http::http_clean_temp_file,
             commands::hash::compute_file_hash,
             commands::hash::cancel_file_hash,
             commands::hash::compute_text_hash,

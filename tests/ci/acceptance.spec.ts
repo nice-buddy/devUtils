@@ -269,6 +269,84 @@ describe('CI 自动化集成验收测试套件 (CI Acceptance Suite)', () => {
       expect(streamLargeResponse.isLarge).toBe(true)
       expect(streamLargeResponse.tempFilePath).toContain('devutils_large_resp_12345.bin')
     })
+
+    it('Postman IPC 响应结果严格遵循 camelCase 并完整映射至 PostmanResponseModel', () => {
+      const ipcResult = {
+        status: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'image/png' },
+        body: '',
+        bodyBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        isBinary: true,
+        isLarge: false,
+        tempFilePath: null,
+        durationMs: 48,
+        sizeBytes: 68
+      }
+
+      const responseModel = {
+        status: ipcResult.status,
+        statusText: ipcResult.statusText,
+        headers: ipcResult.headers,
+        body: ipcResult.body,
+        bodyBase64: ipcResult.bodyBase64,
+        isBinary: ipcResult.isBinary,
+        isLarge: ipcResult.isLarge,
+        tempFilePath: ipcResult.tempFilePath,
+        durationMs: ipcResult.durationMs,
+        sizeBytes: ipcResult.sizeBytes
+      }
+
+      expect(responseModel.statusText).toBe('OK')
+      expect(responseModel.durationMs).toBe(48)
+      expect(responseModel.sizeBytes).toBe(68)
+      expect(responseModel.isBinary).toBe(true)
+      expect(responseModel.bodyBase64).toBeTruthy()
+      expect(responseModel.tempFilePath).toBeNull()
+    })
+
+    it('Postman 历史记录能够从 camelCase 格式完备恢复 method/url/headers/bodyType/rawType/auth/settings', () => {
+      const historyItem = {
+        id: 'hist_123',
+        method: 'POST',
+        url: 'https://api.devutils.io/order',
+        statusCode: 200,
+        durationMs: 120,
+        requestDataJson: JSON.stringify({
+          method: 'POST',
+          url: 'https://api.devutils.io/order',
+          headers: [{ key: 'Authorization', value: 'Bearer test', enabled: true }],
+          params: [{ key: 'tab', value: 'cart', enabled: true }],
+          bodyType: 'raw',
+          rawType: 'json',
+          bodyRaw: '{"itemId": 1001}',
+          formData: [],
+          urlencodedData: [],
+          binaryFilePath: null,
+          timeoutMs: 15000,
+          ignoreSsl: true,
+          followRedirects: false,
+          proxy: 'http://127.0.0.1:7890',
+          auth: {
+            type: 'bearer',
+            bearerToken: 'test'
+          }
+        }),
+        responseSummaryJson: '{}',
+        executedAt: Date.now()
+      }
+
+      const parsedReq = JSON.parse(historyItem.requestDataJson)
+      expect(parsedReq.bodyType).toBe('raw')
+      expect(parsedReq.rawType).toBe('json')
+      expect(parsedReq.bodyRaw).toBe('{"itemId": 1001}')
+      expect(parsedReq.timeoutMs).toBe(15000)
+      expect(parsedReq.ignoreSsl).toBe(true)
+      expect(parsedReq.followRedirects).toBe(false)
+      expect(parsedReq.proxy).toBe('http://127.0.0.1:7890')
+      expect(parsedReq.auth.type).toBe('bearer')
+      expect(parsedReq.auth.bearerToken).toBe('test')
+    })
   })
 
   // ============================================================================

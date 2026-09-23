@@ -44,6 +44,8 @@ pub struct HttpRequestPayload {
     pub follow_redirects: Option<bool>,
     #[serde(default)]
     pub proxy: Option<String>,
+    #[serde(default)]
+    pub auth: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -291,14 +293,26 @@ pub async fn http_execute(
         if is_binary_mime {
             (true, String::new(), None)
         } else {
-            let preview_len = (1024 * 1024).min(bytes_acc.len());
-            match std::str::from_utf8(&bytes_acc[..preview_len]) {
-                Ok(utf8_str) => {
-                    let mut preview = utf8_str.to_string();
-                    preview.push_str("\n\n... [已自动开启大文本保护：响应体大于 5MB，仅展示前 1MB 预览。完整内容已保存至临时缓存文件] ...");
-                    (false, preview, None)
+            let mut preview_len = (1024 * 1024).min(bytes_acc.len());
+            // 如果截断处落在多字节 UTF-8 字符序列中间，向左回退到字符起始边界
+            if preview_len < bytes_acc.len() {
+                while preview_len > 0 && (bytes_acc[preview_len] & 0b1100_0000) == 0b1000_0000 {
+                    preview_len -= 1;
                 }
-                Err(_) => (true, String::new(), None),
+            }
+
+            // 检查前 4096 字节是否包含空字节以判定是否为二进制流
+            let has_nul = bytes_acc[..preview_len.min(4096)].contains(&0u8);
+            if has_nul {
+                (true, String::new(), None)
+            } else {
+                let preview_text = match std::str::from_utf8(&bytes_acc[..preview_len]) {
+                    Ok(utf8_str) => utf8_str.to_string(),
+                    Err(_) => String::from_utf8_lossy(&bytes_acc[..preview_len]).into_owned(),
+                };
+                let mut preview = preview_text;
+                preview.push_str("\n\n... [已自动开启大文本保护：响应体大于 5MB，仅展示前 1MB 预览。完整内容已保存至临时缓存文件] ...");
+                (false, preview, None)
             }
         }
     } else if is_binary_mime {
@@ -362,4 +376,35 @@ pub async fn http_execute(
         .await;
 
     Ok(resp_payload)
+}
+
+/// 清理系统临时目录中遗留的 devutils_resp_*.bin 大响应缓存文件
+pub fn clean_all_temp_response_files() {
+    let temp_dir = std::env::temp_dir();
+    if let Ok(entries) = std::fs::read_dir(temp_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                if file_name.starts_with("devutils_resp_") && file_name.ends_with(".bin") {
+                    let _ = std::fs::remove_file(path);
+                }
+            }
+        }
+    }
+}
+
+/// 前端调用清理指定临时大响应缓存文件
+#[tauri::command]
+pub async fn http_clean_temp_file(file_path: String) -> Result<(), String> {
+    let path = std::path::PathBuf::from(&file_path);
+    // 安全校验：只允许删除临时目录下以 devutils_resp_ 开头的文件，防止任意路径文件删除
+    let temp_dir = std::env::temp_dir();
+    if path.starts_with(&temp_dir) {
+        if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+            if file_name.starts_with("devutils_resp_") && file_name.ends_with(".bin") {
+                let _ = tokio::fs::remove_file(&path).await;
+            }
+        }
+    }
+    Ok(())
 }

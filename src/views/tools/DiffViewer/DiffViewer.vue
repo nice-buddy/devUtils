@@ -851,7 +851,7 @@ onBeforeUnmount(() => {
                 <!-- Left Content with Character-level Highlight -->
                 <td
                   :class="[
-                    'py-0.5 px-2 whitespace-pre-wrap break-all border-r border-slate-200 dark:border-slate-800',
+                    'py-0.5 px-2 whitespace-pre font-mono border-r border-slate-200 dark:border-slate-800',
                     row.left.tag === 'delete'
                       ? 'bg-rose-50 dark:bg-rose-950/30 text-rose-800 dark:text-rose-200'
                       : row.left.tag === 'empty'
@@ -902,7 +902,7 @@ onBeforeUnmount(() => {
                 <!-- Right Content with Character-level Highlight -->
                 <td
                   :class="[
-                    'py-0.5 px-2 whitespace-pre-wrap break-all',
+                    'py-0.5 px-2 whitespace-pre font-mono',
                     row.right.tag === 'insert'
                       ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200'
                       : row.right.tag === 'empty'
@@ -1031,7 +1031,7 @@ onBeforeUnmount(() => {
                 </td>
 
                 <!-- Content with Character-level Highlight -->
-                <td class="py-0.5 px-2.5 whitespace-pre-wrap break-all">
+                <td class="py-0.5 px-2.5 whitespace-pre font-mono">
                   <template v-if="row.inline_spans && row.inline_spans.length > 0">
                     <span
                       v-for="(span, sIdx) in row.inline_spans"

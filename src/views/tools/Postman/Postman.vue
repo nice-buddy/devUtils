@@ -239,6 +239,11 @@ async function handleSend() {
     return
   }
 
+  const prevTempFilePath = response.value?.tempFilePath
+  if (prevTempFilePath) {
+    invoke('http_clean_temp_file', { filePath: prevTempFilePath }).catch(() => {})
+  }
+
   loading.value = true
   errorMessage.value = null
   response.value = null
@@ -327,6 +332,7 @@ async function handleSend() {
         value: resolveVariables(u.value)
       })),
       binary_file_path: request.value.binaryFilePath || null,
+      auth: request.value.auth,
       timeout_ms: request.value.settings.timeoutMs || 30000,
       ignore_ssl: request.value.settings.ignoreSsl,
       follow_redirects: request.value.settings.followRedirects,
@@ -335,20 +341,28 @@ async function handleSend() {
 
     const result = await invoke<{
       status: number
-      status_text: string
+      statusText: string
       headers: Record<string, string>
       body: string
-      duration_ms: number
-      size_bytes: number
+      bodyBase64?: string | null
+      isBinary?: boolean
+      isLarge?: boolean
+      tempFilePath?: string | null
+      durationMs: number
+      sizeBytes: number
     }>('http_execute', { req: payload })
 
     response.value = {
       status: result.status,
-      statusText: result.status_text,
+      statusText: result.statusText,
       headers: result.headers,
       body: result.body,
-      durationMs: result.duration_ms,
-      sizeBytes: result.size_bytes
+      bodyBase64: result.bodyBase64,
+      isBinary: result.isBinary,
+      isLarge: result.isLarge,
+      tempFilePath: result.tempFilePath,
+      durationMs: result.durationMs,
+      sizeBytes: result.sizeBytes
     }
 
     saveSnapshot()
@@ -398,20 +412,32 @@ function restoreFromHistory(item: HistoryItem) {
       request.value.url = parsedReq.url || ''
       request.value.headers = parsedReq.headers || []
       request.value.params = parsedReq.params || []
-      request.value.bodyType = parsedReq.body_type || 'none'
-      request.value.bodyRaw = parsedReq.body_raw || ''
-      request.value.formData = (parsedReq.form_data || []).map((f: any) => ({
+      request.value.bodyType = parsedReq.bodyType || parsedReq.body_type || 'none'
+      request.value.rawType = parsedReq.rawType || parsedReq.raw_type || 'json'
+      request.value.bodyRaw = parsedReq.bodyRaw || parsedReq.body_raw || ''
+      request.value.formData = (parsedReq.formData || parsedReq.form_data || []).map((f: any) => ({
         key: f.key || '',
         value: f.value || '',
         enabled: f.enabled !== false,
         itemType: f.itemType || f.item_type || 'text'
       }))
-      request.value.urlencodedData = parsedReq.urlencoded_data || []
-      request.value.binaryFilePath = parsedReq.binary_file_path || ''
-      if (parsedReq.timeout_ms) request.value.settings.timeoutMs = parsedReq.timeout_ms
-      if (parsedReq.ignore_ssl !== undefined) request.value.settings.ignoreSsl = parsedReq.ignore_ssl
-      if (parsedReq.follow_redirects !== undefined) request.value.settings.followRedirects = parsedReq.follow_redirects
-      if (parsedReq.proxy) request.value.settings.proxy = parsedReq.proxy
+      request.value.urlencodedData = parsedReq.urlencodedData || parsedReq.urlencoded_data || []
+      request.value.binaryFilePath = parsedReq.binaryFilePath || parsedReq.binary_file_path || ''
+
+      const timeoutMs = parsedReq.timeoutMs || parsedReq.timeout_ms
+      if (timeoutMs !== undefined) request.value.settings.timeoutMs = timeoutMs
+      const ignoreSsl = parsedReq.ignoreSsl !== undefined ? parsedReq.ignoreSsl : parsedReq.ignore_ssl
+      if (ignoreSsl !== undefined) request.value.settings.ignoreSsl = ignoreSsl
+      const followRedirects = parsedReq.followRedirects !== undefined ? parsedReq.followRedirects : parsedReq.follow_redirects
+      if (followRedirects !== undefined) request.value.settings.followRedirects = followRedirects
+      if (parsedReq.proxy !== undefined) request.value.settings.proxy = parsedReq.proxy
+
+      if (parsedReq.auth) {
+        request.value.auth = {
+          ...request.value.auth,
+          ...parsedReq.auth
+        }
+      }
 
       saveSnapshot()
       message.success(`已恢复历史请求: ${item.method} ${item.url}`)

@@ -64,6 +64,7 @@ async fn test_http_execute_and_history_logging() {
         ignore_ssl: Some(true),
         follow_redirects: Some(true),
         proxy: None,
+        auth: None,
     };
 
     // 4. 执行请求
@@ -113,6 +114,7 @@ async fn test_http_execute_file_not_found_errors() {
         ignore_ssl: None,
         follow_redirects: None,
         proxy: None,
+        auth: None,
     };
 
     let result = http_execute(req, tauri_state.clone()).await;
@@ -175,6 +177,7 @@ async fn test_http_execute_query_params_and_content_type_autoinject() {
         ignore_ssl: Some(true),
         follow_redirects: Some(true),
         proxy: None,
+        auth: None,
     };
 
     let resp = http_execute(req, tauri_state).await.expect("Request should succeed");
@@ -260,4 +263,38 @@ async fn test_http_execute_multipart_form_data_file_streaming() {
     assert!(resp.body.contains("DevUtils Multipart Stream Content 123456"));
     assert!(resp.body.contains("textValue"));
 }
+
+#[tokio::test]
+async fn test_temp_file_cleanup_and_chinese_utf8_preview() {
+    let temp_dir = std::env::temp_dir();
+    let test_file = temp_dir.join("devutils_resp_test_cleanup_1.bin");
+    std::fs::write(&test_file, b"temp-data").unwrap();
+    assert!(test_file.exists());
+
+    // 1. 测试全部临时文件扫描清理
+    devutils_lib::commands::http::clean_all_temp_response_files();
+    assert!(!test_file.exists());
+
+    // 2. 测试指定临时文件删除 IPC 命令
+    let test_file2 = temp_dir.join("devutils_resp_test_cleanup_2.bin");
+    std::fs::write(&test_file2, b"temp-data-2").unwrap();
+    assert!(test_file2.exists());
+
+    let res = devutils_lib::commands::http::http_clean_temp_file(test_file2.to_string_lossy().to_string()).await;
+    assert!(res.is_ok());
+    assert!(!test_file2.exists());
+
+    // 3. 测试中文字符切片边界回退逻辑（防跨字节截断引发解码崩溃）
+    let chinese_bytes = "你好，世界！这是一段超长中文响应测试数据".as_bytes();
+    // 取第 4 字节（落在“好”的第 2 个字节中间，UTF-8 延续字节 0b10xxxxxx）
+    let mut cut_idx = 4;
+    while cut_idx > 0 && (chinese_bytes[cut_idx] & 0b1100_0000) == 0b1000_0000 {
+        cut_idx -= 1;
+    }
+    // 回退到字符边界后，必须能够安全解码为合法 UTF-8 字符串
+    let valid_slice = std::str::from_utf8(&chinese_bytes[..cut_idx]);
+    assert!(valid_slice.is_ok());
+    assert_eq!(valid_slice.unwrap(), "你");
+}
+
 

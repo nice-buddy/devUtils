@@ -469,10 +469,37 @@ function handleResetJsonPath() {
 }
 
 function handleClear() {
+  if (isOver5MB.value) {
+    isOver5MB.value = false
+    if (inputView) {
+      inputView.dispatch({
+        effects: [
+          readOnlyCompartmentInput.reconfigure(EditorState.readOnly.of(false)),
+          editableCompartmentInput.reconfigure(EditorView.editable.of(true))
+        ]
+      })
+    }
+  }
   setInputContent('')
   if (isSplit.value) setOutputContent('')
-  message.info('已清空内容')
+  errorMessage.value = ''
+  message.info('已清空内容并解除锁定')
   saveSnapshot()
+}
+
+function handleForceUnlock() {
+  if (isOver5MB.value) {
+    isOver5MB.value = false
+    if (inputView) {
+      inputView.dispatch({
+        effects: [
+          readOnlyCompartmentInput.reconfigure(EditorState.readOnly.of(false)),
+          editableCompartmentInput.reconfigure(EditorView.editable.of(true))
+        ]
+      })
+    }
+    message.warning('已手动解除只读锁定，编辑超大文本可能会引起界面卡顿')
+  }
 }
 
 async function handleCopy() {
@@ -746,12 +773,29 @@ onBeforeUnmount(() => {
         </svg>
         <span>文本超过 5MB，已自动开启轻量安全只读锁定保护（禁止前端重度 AST 解析以防卡死）</span>
       </div>
-      <button
-        @click="handleSaveAsFile"
-        class="px-2 py-0.5 rounded bg-amber-200 dark:bg-amber-900 text-amber-800 dark:text-amber-100 hover:bg-amber-300 text-[11px] font-medium transition-colors"
-      >
-        另存为本地文件
-      </button>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button
+          @click="handleSaveAsFile"
+          class="px-2 py-0.5 rounded bg-amber-200 dark:bg-amber-900 text-amber-800 dark:text-amber-100 hover:bg-amber-300 text-[11px] font-medium transition-colors"
+          title="将当前大文件完整导出至本地"
+        >
+          另存为本地文件
+        </button>
+        <button
+          @click="handleForceUnlock"
+          class="px-2 py-0.5 rounded bg-amber-200/70 dark:bg-amber-900/60 text-amber-800 dark:text-amber-100 hover:bg-amber-300 text-[11px] font-medium transition-colors"
+          title="手动解除只读锁定，允许继续编辑"
+        >
+          强制解锁
+        </button>
+        <button
+          @click="handleClear"
+          class="px-2 py-0.5 rounded bg-rose-200 dark:bg-rose-900 text-rose-800 dark:text-rose-100 hover:bg-rose-300 text-[11px] font-medium transition-colors"
+          title="清空内容并重置锁定状态"
+        >
+          清空
+        </button>
+      </div>
     </div>
 
     <!-- Sub Header: JSONPath Filter Bar -->
