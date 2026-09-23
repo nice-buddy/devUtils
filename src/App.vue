@@ -26,6 +26,7 @@ const EncodingHash = defineAsyncComponent(() => import('@/views/tools/EncodingHa
 const TimestampCron = defineAsyncComponent(() => import('@/views/tools/TimestampCron/TimestampCron.vue'))
 const JsonToTypes = defineAsyncComponent(() => import('@/views/tools/JsonToTypes/JsonToTypes.vue'))
 const UrlParser = defineAsyncComponent(() => import('@/views/tools/UrlParser/UrlParser.vue'))
+const RadixCase = defineAsyncComponent(() => import('@/views/tools/RadixCase/RadixCase.vue'))
 
 const tabStore = useTabStore()
 const themeStore = useThemeStore()
@@ -59,6 +60,9 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'url-parser' || toolId === 'url_parser') {
     return UrlParser
+  }
+  if (toolId === 'radix-case' || toolId === 'radix_case') {
+    return RadixCase
   }
   return ToolPlaceholder
 }

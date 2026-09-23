@@ -56,5 +56,5 @@ export function toCase(input: string, style: CaseStyle): string {
 }
 
 export function convertAllCases(input: string): { style: CaseStyle; label: string; value: string }[] {
-  return CASE_STYLES.map(item => ({ ...item, value: toCase(input, item.value) }))
+  return CASE_STYLES.map(item => ({ style: item.value, label: item.label, value: toCase(input, item.value) }))
 }
