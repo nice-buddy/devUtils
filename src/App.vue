@@ -27,6 +27,7 @@ const TimestampCron = defineAsyncComponent(() => import('@/views/tools/Timestamp
 const JsonToTypes = defineAsyncComponent(() => import('@/views/tools/JsonToTypes/JsonToTypes.vue'))
 const UrlParser = defineAsyncComponent(() => import('@/views/tools/UrlParser/UrlParser.vue'))
 const RadixCase = defineAsyncComponent(() => import('@/views/tools/RadixCase/RadixCase.vue'))
+const ChmodCalc = defineAsyncComponent(() => import('@/views/tools/ChmodCalc/ChmodCalc.vue'))
 
 const tabStore = useTabStore()
 const themeStore = useThemeStore()
@@ -63,6 +64,9 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'radix-case' || toolId === 'radix_case') {
     return RadixCase
+  }
+  if (toolId === 'chmod-calc' || toolId === 'chmod_calc') {
+    return ChmodCalc
   }
   return ToolPlaceholder
 }
