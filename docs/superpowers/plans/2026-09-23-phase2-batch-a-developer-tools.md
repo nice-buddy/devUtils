@@ -542,9 +542,10 @@ describe('json-to-types 生成器', () => {
   })
 
   it('嵌套类型同名时追加后缀，避免重复声明', () => {
-    const out = generators.ts(rootOf('{"ab":{"x":1},"a_b":{"y":2}}'), 'RootObject')
-    expect(out).toContain('export interface RootObjectAb {')
-    expect(out).toContain('export interface RootObjectAb2 {')
+    // user-name 与 user_name 切词后都是 ['user', 'name']，归一后撞名，第二个追加数字后缀。
+    const out = generators.ts(rootOf('{"user-name":{"x":1},"user_name":{"y":2}}'), 'RootObject')
+    expect(out).toContain('export interface RootObjectUserName {')
+    expect(out).toContain('export interface RootObjectUserName2 {')
   })
 
   it('空对象与空数组退化为 any / interface{}', () => {
@@ -556,7 +557,7 @@ describe('json-to-types 生成器', () => {
 })
 ```
 
-注意：`nested 同名后缀` 用例里 `ab` 与 `a_b` 归一后都是 `RootObjectAb`，第二个会拿到 `RootObjectAb2`。
+注意：同名后缀用例里 `user-name` 与 `user_name` 切词后都是 `['user', 'name']`，归一后都叫 `RootObjectUserName`，第二个会拿到 `RootObjectUserName2`。
 
 - [ ] **Step 2: 运行测试确认失败**
 
