@@ -25,6 +25,7 @@ const Postman = defineAsyncComponent(() => import('@/views/tools/Postman/Postman
 const EncodingHash = defineAsyncComponent(() => import('@/views/tools/EncodingHash/EncodingHash.vue'))
 const TimestampCron = defineAsyncComponent(() => import('@/views/tools/TimestampCron/TimestampCron.vue'))
 const JsonToTypes = defineAsyncComponent(() => import('@/views/tools/JsonToTypes/JsonToTypes.vue'))
+const UrlParser = defineAsyncComponent(() => import('@/views/tools/UrlParser/UrlParser.vue'))
 
 const tabStore = useTabStore()
 const themeStore = useThemeStore()
@@ -55,6 +56,9 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'json-to-types' || toolId === 'json_to_types') {
     return JsonToTypes
+  }
+  if (toolId === 'url-parser' || toolId === 'url_parser') {
+    return UrlParser
   }
   return ToolPlaceholder
 }
