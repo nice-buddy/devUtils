@@ -28,6 +28,7 @@ const JsonToTypes = defineAsyncComponent(() => import('@/views/tools/JsonToTypes
 const UrlParser = defineAsyncComponent(() => import('@/views/tools/UrlParser/UrlParser.vue'))
 const RadixCase = defineAsyncComponent(() => import('@/views/tools/RadixCase/RadixCase.vue'))
 const ChmodCalc = defineAsyncComponent(() => import('@/views/tools/ChmodCalc/ChmodCalc.vue'))
+const PasswordSsh = defineAsyncComponent(() => import('@/views/tools/PasswordSsh/PasswordSsh.vue'))
 
 const tabStore = useTabStore()
 const themeStore = useThemeStore()
@@ -67,6 +68,9 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'chmod-calc' || toolId === 'chmod_calc') {
     return ChmodCalc
+  }
+  if (toolId === 'password-ssh' || toolId === 'password_ssh') {
+    return PasswordSsh
   }
   return ToolPlaceholder
 }
