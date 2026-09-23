@@ -150,4 +150,83 @@ describe('tabStore 单例标签与 LRU 淘汰', () => {
     expect(store.activeTabId).toBe('')
     expect(store.keepAliveTabIds.length).toBe(0)
   })
+
+  it('关闭 Tab 后重开同一工具会还原上次的输入与视图选项', () => {
+    const store = useTabStore()
+    const firstId = store.openTab('sql-formatter', 'SQL 格式化与压缩')
+    store.updateTabSnapshot(firstId, { input: 'SELECT 1', mode: 'minify' })
+
+    store.closeTab(firstId)
+    expect(store.openTabs).toHaveLength(0)
+
+    const reopenedId = store.openTab('sql-formatter', 'SQL 格式化与压缩')
+    expect(reopenedId).toBe(firstId)
+    expect(store.openTabs.find(t => t.id === reopenedId)?.snapshot).toEqual({ input: 'SELECT 1', mode: 'minify' })
+  })
+
+  it('关闭 Tab 时组件卸载补写的那一次快照也会落到休眠快照上', () => {
+    const store = useTabStore()
+    const firstId = store.openTab('password-ssh', '强密码生成与 SSH Key 解析')
+    store.updateTabSnapshot(firstId, { panel: 'ssh' })
+
+    store.closeTab(firstId)
+    // onBeforeUnmount 在标签从 openTabs 移除之后才触发，这里模拟那一次补写
+    store.updateTabSnapshot(firstId, { sshInput: 'ssh-ed25519 AAAA' })
+
+    const reopenedId = store.openTab('password-ssh', '强密码生成与 SSH Key 解析')
+    expect(reopenedId).toBe(firstId)
+    expect(store.openTabs.find(t => t.id === reopenedId)?.snapshot).toEqual({
+      panel: 'ssh',
+      sshInput: 'ssh-ed25519 AAAA'
+    })
+  })
+
+  it('应用重启时只恢复当时打开的标签，已关闭的标签留在休眠快照里', async () => {
+    const store = useTabStore()
+    const sqlId = store.openTab('sql-formatter', 'SQL 格式化与压缩')
+    store.updateTabSnapshot(sqlId, { input: 'SELECT 42' })
+    const jsonId = store.openTab('json-suite', 'JSON 深度套件')
+    store.closeTab(sqlId)
+
+    // 模拟重启后的数据库：两行快照都在，但 open_tab_ids 只剩 json-suite
+    invokeMock.mockImplementation(async (cmd: any, args: any) => {
+      if (cmd !== 'db_query') return []
+      const query = String(args?.query ?? '')
+      if (query.includes('tool_state_snapshots')) {
+        return [
+          { tab_id: sqlId, tool_id: 'sql-formatter', title: 'SQL 格式化与压缩', sort_order: 0, snapshot_data_json: '{"input":"SELECT 42"}' },
+          { tab_id: jsonId, tool_id: 'json-suite', title: 'JSON 深度套件', sort_order: 1, snapshot_data_json: '{}' }
+        ]
+      }
+      if (query.includes('open_tab_ids')) return [{ value: JSON.stringify([jsonId]) }]
+      return []
+    })
+
+    await store.restoreTabsFromDb()
+
+    expect(store.openTabs.map(t => t.id)).toEqual([jsonId])
+
+    const reopenedId = store.openTab('sql-formatter', 'SQL 格式化与压缩')
+    expect(reopenedId).toBe(sqlId)
+    expect(store.openTabs.find(t => t.id === reopenedId)?.snapshot).toEqual({ input: 'SELECT 42' })
+  })
+
+  it('没有 open_tab_ids 的旧数据按全部打开处理，并补写 open_tab_ids', async () => {
+    const store = useTabStore()
+    invokeMock.mockImplementation(async (cmd: any, args: any) => {
+      if (cmd !== 'db_query') return []
+      if (String(args?.query ?? '').includes('tool_state_snapshots')) {
+        return [{ tab_id: 'postman_a', tool_id: 'postman', title: 'Postman', sort_order: 0, snapshot_data_json: '{}' }]
+      }
+      return []
+    })
+
+    await store.restoreTabsFromDb()
+
+    expect(store.openTabs.map(t => t.id)).toEqual(['postman_a'])
+    const wroteOpenIds = invokeMock.mock.calls.some(
+      c => c[0] === 'db_execute' && String(c[1]?.query ?? '').includes('open_tab_ids')
+    )
+    expect(wroteOpenIds).toBe(true)
+  })
 })

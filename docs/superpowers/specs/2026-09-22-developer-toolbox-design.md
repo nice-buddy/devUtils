@@ -246,7 +246,8 @@ CREATE TABLE IF NOT EXISTS sys_settings (
     updated_at INTEGER NOT NULL
 );
 
--- 2. 标签页与工具快照表（崩溃与重启恢复工作区，关闭 Tab 时显式删除对应记录）
+-- 2. 标签页与工具快照表（崩溃与重启恢复工作区；关闭 Tab 时保留记录作为「休眠快照」，
+--    重启时靠 sys_settings.open_tab_ids 区分当时开着的标签，已关闭的标签不会自动弹回，重开该工具时回填内容）
 CREATE TABLE IF NOT EXISTS tool_state_snapshots (
     tab_id TEXT PRIMARY KEY,
     tool_id TEXT NOT NULL,
