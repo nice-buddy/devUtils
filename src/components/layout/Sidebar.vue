@@ -65,7 +65,7 @@ function toggleFavorite(toolId: string, event: MouseEvent) {
     ]"
   >
     <!-- App Brand & Title -->
-    <div class="h-12 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-800">
+    <div data-tauri-drag-region="deep" class="h-12 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-800">
       <div v-if="!isCollapsed" class="flex items-center gap-2 min-w-0">
         <div class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
           D

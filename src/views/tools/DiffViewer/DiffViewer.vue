@@ -593,36 +593,12 @@ onBeforeUnmount(() => {
               isSemanticJson ? 'bg-indigo-500 animate-pulse' : 'bg-slate-400'
             ]"
           ></span>
-          <span>JSON 语义比对：按键排序预处理</span>
+          <span>按字母排序</span>
         </button>
       </div>
 
-      <!-- Right: Summary Statistics, Diff Jumpers & Actions -->
+      <!-- Right: Diff Jumpers & Actions -->
       <div class="flex items-center gap-2 shrink-0">
-        <!-- Summary Stats Badges (+新增 / -删除 / ~变更) -->
-        <div class="flex items-center gap-1 font-mono text-[11px] shrink-0">
-          <span
-            class="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60 font-medium"
-            title="新增行数"
-          >
-            +{{ processed.stats.additions }} 新增
-          </span>
-          <span
-            class="px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/60 font-medium"
-            title="删除行数"
-          >
-            -{{ processed.stats.deletions }} 删除
-          </span>
-          <span
-            class="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60 font-medium"
-            title="修改/变更块数"
-          >
-            ~{{ processed.stats.modifications }} 变更
-          </span>
-        </div>
-
-        <div class="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1"></div>
-
         <!-- Diff Jump Navigation Buttons -->
         <div class="flex items-center bg-slate-100 dark:bg-slate-800 rounded p-0.5 text-xs font-mono shrink-0">
           <button
@@ -1067,7 +1043,7 @@ onBeforeUnmount(() => {
     <!-- Bottom Status Bar -->
     <footer class="h-7 px-3 bg-slate-100 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 font-mono shrink-0">
       <!-- Left: Keybinding Hint -->
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 shrink-0">
         <div class="flex items-center gap-1.5">
           <kbd class="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">Alt+↑</kbd>
           <kbd class="px-1.5 py-0.2 rounded bg-slate-200 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">Alt+↓</kbd>
@@ -1080,20 +1056,41 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Center / Right: Mode & Hunk Summary -->
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 min-w-0">
         <span v-if="isLargePayload" class="px-1.5 py-0.2 rounded bg-amber-100 dark:bg-amber-950 text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-800 text-[10px] font-sans">
           大文本保护
         </span>
-        <span v-if="isSemanticJson" class="text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+        <span v-if="isSemanticJson" class="text-indigo-600 dark:text-indigo-400 flex items-center gap-1 min-w-0">
           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
           </svg>
-          <span class="font-sans font-medium text-[10px]">JSON 语义按键预排序 + AST 大整数保护激活</span>
+          <span class="font-sans font-medium text-[10px] truncate">JSON 语义按键预排序 + AST 大整数保护激活</span>
         </span>
         <span v-else class="text-slate-400 font-sans text-[10px]">
           纯文本行级比对
         </span>
 
+        <!-- 行数统计：新增 / 删除 / 变更 -->
+        <div class="flex items-center gap-1 text-[10px] shrink-0">
+          <span
+            class="px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60"
+            title="新增行数"
+          >
+            +{{ processed.stats.additions }} 新增
+          </span>
+          <span
+            class="px-1.5 py-0.2 rounded bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200/60 dark:border-rose-800/60"
+            title="删除行数"
+          >
+            -{{ processed.stats.deletions }} 删除
+          </span>
+          <span
+            class="px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60"
+            title="修改/变更块数"
+          >
+            ~{{ processed.stats.modifications }} 变更
+          </span>
+        </div>
         <span class="text-slate-400">·</span>
         <span class="text-slate-600 dark:text-slate-300 font-sans">
           共 {{ processed.stats.totalHunks }} 处差异

@@ -117,7 +117,7 @@ onMounted(async () => {
           <div class="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
             <!-- Window Drag & Title Area -->
             <header
-              data-tauri-drag-region
+              data-tauri-drag-region="deep"
               class="h-8 w-full bg-slate-100 dark:bg-slate-950 flex items-center justify-between px-3 shrink-0 border-b border-slate-200/60 dark:border-slate-800/60 text-xs text-slate-500"
             >
               <div class="flex items-center gap-2">
