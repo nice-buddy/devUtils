@@ -3,6 +3,7 @@ export interface KeyValuePair {
   value: string
   enabled?: boolean
   description?: string
+  itemType?: 'text' | 'file'
 }
 
 export interface ParsedCurl {
@@ -11,6 +12,8 @@ export interface ParsedCurl {
   headers: Record<string, string>
   body: string
   params: KeyValuePair[]
+  formData?: KeyValuePair[]
+  bodyType?: string
 }
 
 /**
@@ -76,6 +79,7 @@ export function parseCurl(curlCommand: string): ParsedCurl {
   let url = ''
   const headers: Record<string, string> = {}
   const bodyChunks: string[] = []
+  const formDataList: KeyValuePair[] = []
   let explicitMethod = false
 
   let i = 0
@@ -103,6 +107,24 @@ export function parseCurl(curlCommand: string): ParsedCurl {
           if (key) {
             headers[key] = value
           }
+        }
+        i += 2
+        continue
+      }
+    } else if (token === '-F' || token === '--form') {
+      if (i + 1 < tokens.length) {
+        const formStr = tokens[i + 1]
+        const eqIdx = formStr.indexOf('=')
+        if (eqIdx > -1) {
+          const k = formStr.substring(0, eqIdx).trim()
+          const v = formStr.substring(eqIdx + 1).trim()
+          const isFile = v.startsWith('@')
+          formDataList.push({
+            key: k,
+            value: isFile ? v.slice(1) : v,
+            enabled: true,
+            itemType: isFile ? 'file' : 'text'
+          })
         }
         i += 2
         continue
@@ -147,7 +169,11 @@ export function parseCurl(curlCommand: string): ParsedCurl {
 
   const body = bodyChunks.join('&')
   if (!explicitMethod) {
-    method = bodyChunks.length > 0 ? 'POST' : 'GET'
+    if (formDataList.length > 0 || bodyChunks.length > 0) {
+      method = 'POST'
+    } else {
+      method = 'GET'
+    }
   }
 
   // 提取 URL 中的 Query Params
@@ -167,7 +193,9 @@ export function parseCurl(curlCommand: string): ParsedCurl {
     url,
     headers,
     body,
-    params
+    params,
+    formData: formDataList.length > 0 ? formDataList : undefined,
+    bodyType: formDataList.length > 0 ? 'form-data' : undefined
   }
 }
 
@@ -188,6 +216,7 @@ export interface ExportCurlOptions {
   }
   formData?: KeyValuePair[]
   urlencodedData?: KeyValuePair[]
+  binaryFilePath?: string
 }
 
 /**
@@ -268,38 +297,59 @@ export function exportToCurl(req: ExportCurlOptions): string {
     })
   }
 
-  // 序列化 Body
-  let bodyPayload = req.body || ''
-  if (!bodyPayload) {
-    if (req.bodyType === 'x-www-form-urlencoded' && req.urlencodedData?.length) {
-      const activePairs = req.urlencodedData.filter(
-        (item) => item.enabled !== false && item.key?.trim()
-      )
-      if (activePairs.length > 0) {
-        bodyPayload = activePairs
-          .map(
-            (p) =>
-              `${encodeURIComponent(p.key.trim())}=${encodeURIComponent(p.value || '')}`
-          )
-          .join('&')
-        if (!headerList.some((h) => h.key.toLowerCase() === 'content-type')) {
-          headerList.push({
-            key: 'Content-Type',
-            value: 'application/x-www-form-urlencoded'
-          })
-        }
+  // 1. form-data (multipart) 处理：严格输出 -F，移除用户可能填入的 multipart Content-Type
+  if (req.bodyType === 'form-data' && req.formData?.length) {
+    const cleanHeaders = headerList.filter(
+      (h) => !h.key.toLowerCase().startsWith('content-type') || !h.value.toLowerCase().includes('multipart')
+    )
+    for (const h of cleanHeaders) {
+      parts.push(`-H "${h.key}: ${h.value}"`)
+    }
+
+    const activePairs = req.formData.filter(
+      (item) => item.enabled !== false && item.key?.trim()
+    )
+    for (const p of activePairs) {
+      const k = p.key.trim()
+      const val = p.value || ''
+      if (p.itemType === 'file' || (p as any).type === 'file' || val.startsWith('@')) {
+        const filePath = val.startsWith('@') ? val.slice(1) : val
+        parts.push(`-F "${k}=@${filePath}"`)
+      } else {
+        parts.push(`-F "${k}=${val}"`)
       }
-    } else if (req.bodyType === 'form-data' && req.formData?.length) {
-      const activePairs = req.formData.filter(
-        (item) => item.enabled !== false && item.key?.trim()
-      )
-      if (activePairs.length > 0) {
-        bodyPayload = activePairs
-          .map(
-            (p) =>
-              `${encodeURIComponent(p.key.trim())}=${encodeURIComponent(p.value || '')}`
-          )
-          .join('&')
+    }
+
+    return parts.join(' ')
+  }
+
+  // 2. binary file 处理
+  if (req.bodyType === 'binary' && req.binaryFilePath?.trim()) {
+    for (const h of headerList) {
+      parts.push(`-H "${h.key}: ${h.value}"`)
+    }
+    parts.push(`--data-binary "@${req.binaryFilePath.trim()}"`)
+    return parts.join(' ')
+  }
+
+  // 3. x-www-form-urlencoded 处理
+  let bodyPayload = req.body || ''
+  if (!bodyPayload && req.bodyType === 'x-www-form-urlencoded' && req.urlencodedData?.length) {
+    const activePairs = req.urlencodedData.filter(
+      (item) => item.enabled !== false && item.key?.trim()
+    )
+    if (activePairs.length > 0) {
+      bodyPayload = activePairs
+        .map(
+          (p) =>
+            `${encodeURIComponent(p.key.trim())}=${encodeURIComponent(p.value || '')}`
+        )
+        .join('&')
+      if (!headerList.some((h) => h.key.toLowerCase() === 'content-type')) {
+        headerList.push({
+          key: 'Content-Type',
+          value: 'application/x-www-form-urlencoded'
+        })
       }
     }
   }
@@ -308,7 +358,7 @@ export function exportToCurl(req: ExportCurlOptions): string {
     parts.push(`-H "${h.key}: ${h.value}"`)
   }
 
-  // 处理 Body 输出
+  // 处理 Raw 或 urlencoded Body 输出
   if (method !== 'GET' && method !== 'HEAD' && bodyPayload && bodyPayload.trim()) {
     const rawBody = bodyPayload.trim()
     const escaped = rawBody.replace(/'/g, `'\\''`)

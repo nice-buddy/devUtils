@@ -1,10 +1,16 @@
 import { invoke } from '@tauri-apps/api/core'
 
+export interface InlineSpan {
+  tag: 'insert' | 'delete' | 'equal'
+  text: string
+}
+
 export interface DiffItem {
   tag: 'insert' | 'delete' | 'equal'
   value: string
   old_index: number | null
   new_index: number | null
+  inline_spans?: InlineSpan[]
 }
 
 export async function runDiff(original: string, modified: string): Promise<DiffItem[]> {

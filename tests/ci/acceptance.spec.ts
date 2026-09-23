@@ -1,11 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import fs from 'node:fs'
 import path from 'node:path'
+import { invoke } from '@tauri-apps/api/core'
 import { LosslessJSON, formatJson, minifyJson } from '@/views/tools/JsonSuite/utils/losslessJson'
 import { convertTimestamp, timestampToDate, dateToTimestamp } from '@/views/tools/TimestampCron/utils/timeConverter'
 import { parseCurl, exportToCurl } from '@/views/tools/Postman/utils/curlParser'
 import { useTabStore } from '@/stores/tabStore'
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn().mockResolvedValue([])
+}))
 
 // Alias helpers matching acceptance criteria specifications
 const parseLosslessJson = <T = any>(raw: string): T => LosslessJSON.parse(raw)
@@ -207,6 +212,63 @@ describe('CI 自动化集成验收测试套件 (CI Acceptance Suite)', () => {
       expect(iframeSource).toMatch(/:srcdoc="safeHtmlContent"/)
       expect(iframeSource).not.toMatch(/v-html/)
     })
+
+    it('Postman cURL 导出针对 form-data 输出 -F 语法，且不添加多余的 multipart/form-data 头', () => {
+      const curlWithForm = generateCurlCommand({
+        method: 'POST',
+        url: 'https://api.devutils.io/upload',
+        headers: [
+          { key: 'Authorization', value: 'Bearer test_token', enabled: true }
+        ],
+        bodyType: 'form-data',
+        formData: [
+          { key: 'username', value: 'admin', type: 'text', enabled: true },
+          { key: 'file', value: '/tmp/test.png', type: 'file', enabled: true },
+          { key: 'disabled_field', value: 'foo', type: 'text', enabled: false }
+        ]
+      })
+
+      expect(curlWithForm).toContain('curl -X POST "https://api.devutils.io/upload"')
+      expect(curlWithForm).toContain('-F "username=admin"')
+      expect(curlWithForm).toContain('-F "file=@/tmp/test.png"')
+      expect(curlWithForm).not.toContain('disabled_field')
+      expect(curlWithForm).not.toMatch(/-H "Content-Type: multipart\/form-data"/)
+    })
+
+    it('流式 HTTP 响应与 IPC 模型支持 body_base64 二进制图片与 temp_file_path 超大缓存文件', () => {
+      const imgResponse = {
+        statusCode: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'image/png' },
+        body: '',
+        bodyBase64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+        isBinary: true,
+        isLarge: false,
+        sizeBytes: 68,
+        durationMs: 42,
+        tempFilePath: null
+      }
+
+      expect(imgResponse.isBinary).toBe(true)
+      expect(imgResponse.bodyBase64).toBeDefined()
+      expect(imgResponse.tempFilePath).toBeNull()
+
+      const streamLargeResponse = {
+        statusCode: 200,
+        statusText: 'OK',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: 'preview-chunk...',
+        bodyBase64: null,
+        isBinary: true,
+        isLarge: true,
+        sizeBytes: 15 * 1024 * 1024,
+        durationMs: 310,
+        tempFilePath: '/var/folders/temp/devutils_large_resp_12345.bin'
+      }
+
+      expect(streamLargeResponse.isLarge).toBe(true)
+      expect(streamLargeResponse.tempFilePath).toContain('devutils_large_resp_12345.bin')
+    })
   })
 
   // ============================================================================
@@ -264,6 +326,48 @@ describe('CI 自动化集成验收测试套件 (CI Acceptance Suite)', () => {
       // 原本处于 keepAlive 边缘的 tab2 (createdTabIds[2]) 被顺延挤出 keepAlive
       expect(store.keepAliveTabIds.includes(createdTabIds[2])).toBe(false)
       expect(store.keepAliveTabIds.length).toBe(5)
+    })
+
+    it('应用冷启动时从 SQLite 数据库恢复 Tabs 列表、激活状态与快照数据', async () => {
+      const mockInvoke = vi.mocked(invoke)
+      mockInvoke.mockImplementation(async (cmd: string, args?: any) => {
+        if (cmd === 'db_query') {
+          if (args?.query?.includes('FROM tool_state_snapshots')) {
+            return [
+              {
+                tab_id: 'postman_123',
+                tool_id: 'postman',
+                title: '用户下单接口',
+                sort_order: 0,
+                snapshot_data_json: JSON.stringify({ url: 'https://api.devutils.io/order', method: 'POST' })
+              },
+              {
+                tab_id: 'diff_456',
+                tool_id: 'diff_viewer',
+                title: '配置比对',
+                sort_order: 1,
+                snapshot_data_json: JSON.stringify({ original: 'a=1', modified: 'a=2' })
+              }
+            ]
+          }
+          if (args?.query?.includes("WHERE key = 'active_tab_id'")) {
+            return [{ value: 'diff_456' }]
+          }
+        }
+        return []
+      })
+
+      const store = useTabStore()
+      const restored = await store.restoreTabsFromDb()
+
+      expect(restored).toBe(true)
+      expect(store.openTabs.length).toBe(2)
+      expect(store.openTabs[0].id).toBe('postman_123')
+      expect(store.openTabs[0].snapshot).toEqual({ url: 'https://api.devutils.io/order', method: 'POST' })
+      expect(store.openTabs[1].id).toBe('diff_456')
+      expect(store.activeTabId).toBe('diff_456')
+      expect(store.keepAliveTabIds).toContain('diff_456')
+      expect(store.keepAliveTabIds).toContain('postman_123')
     })
   })
 

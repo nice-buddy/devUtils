@@ -701,6 +701,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-rusqlite",
+ "tokio-util",
  "uuid",
 ]
 

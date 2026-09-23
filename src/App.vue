@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, defineComponent, h, watch } from 'vue'
+import { computed, defineAsyncComponent, defineComponent, h, onMounted, watch } from 'vue'
 import {
   NConfigProvider,
   NMessageProvider,
@@ -95,6 +95,10 @@ const mvpTools = computed(() => TOOLS.filter(t => t.isMvp))
 function openTool(tool: ToolDefinition) {
   tabStore.openTab(tool.id, tool.name)
 }
+
+onMounted(async () => {
+  await tabStore.restoreTabsFromDb()
+})
 </script>
 
 <template>

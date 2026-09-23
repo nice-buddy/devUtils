@@ -21,13 +21,38 @@ const themeStore = useThemeStore()
 const activeTab = ref<'pretty' | 'raw' | 'preview' | 'headers'>('pretty')
 
 // Large Response Threshold Guard (> 1MB)
-const isLargePayload = computed(() => {
+const isLargePayload = computed<boolean>(() => {
   if (!props.response) return false
-  return (
+  return Boolean(
+    props.response.isLarge ||
     props.response.sizeBytes > LARGE_RESPONSE_THRESHOLD_BYTES ||
-    props.response.body.length > LARGE_RESPONSE_THRESHOLD_BYTES
+    (props.response.body && props.response.body.length > LARGE_RESPONSE_THRESHOLD_BYTES)
   )
 })
+
+const contentType = computed(() => {
+  if (!props.response?.headers) return ''
+  for (const [k, v] of Object.entries(props.response.headers)) {
+    if (k.toLowerCase() === 'content-type') return v
+  }
+  return ''
+})
+
+const isImageResponse = computed(() => {
+  return contentType.value.toLowerCase().startsWith('image/')
+})
+
+// Auto switch tab if image response
+watch(
+  () => props.response,
+  (res) => {
+    if (res?.isBinary && isImageResponse.value) {
+      activeTab.value = 'preview'
+    } else if (res?.isBinary && activeTab.value !== 'preview' && activeTab.value !== 'headers') {
+      activeTab.value = 'preview'
+    }
+  }
+)
 
 // CodeMirror for Pretty & Raw Response
 const editorEl = ref<HTMLDivElement | null>(null)
@@ -36,7 +61,7 @@ const themeCompartment = new Compartment()
 const langCompartment = new Compartment()
 
 function getLangExtension() {
-  if (isLargePayload.value || activeTab.value !== 'pretty') {
+  if (isLargePayload.value || activeTab.value !== 'pretty' || props.response?.isBinary) {
     return []
   }
   return json()
@@ -146,6 +171,16 @@ async function copyHeaderValue(value: string) {
   }
 }
 
+async function copyTempFilePath() {
+  if (!props.response?.tempFilePath) return
+  try {
+    await navigator.clipboard.writeText(props.response.tempFilePath)
+    message.success('已复制缓存文件路径')
+  } catch {
+    message.error('复制失败')
+  }
+}
+
 watch(
   () => props.response,
   async () => {
@@ -228,7 +263,7 @@ onBeforeUnmount(() => {
               : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
           ]"
         >
-          HTML 预览
+          {{ isImageResponse ? '图片预览' : '网页/媒体预览' }}
         </button>
         <button
           @click="activeTab = 'headers'"
@@ -260,7 +295,7 @@ onBeforeUnmount(() => {
           {{ response.status }} {{ response.statusText }}
         </span>
 
-        <span class="text-[11px] font-mono text-slate-500" title="响应总耗时">
+        <span class="text-[11px] font-mono text-slate-500" title="响应总耗时（含网络传输与下载）">
           ⏱ {{ response.durationMs }} ms
         </span>
 
@@ -287,7 +322,13 @@ onBeforeUnmount(() => {
         <svg class="w-3.5 h-3.5 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
         </svg>
-        <span>响应体积超过 1MB，大文本保护已生效（禁用重度 AST 语法树解析并展示原始文本以保障流畅）</span>
+        <span>
+          {{ response.isLarge ? '响应体积超过 5MB，已开启大报文分块轻量只读保护' : '响应体积超过 1MB，大文本保护已生效（禁用重度 AST 语法树解析并展示原始文本以保障流畅）' }}
+        </span>
+      </div>
+      <div v-if="response.tempFilePath" class="flex items-center gap-2">
+        <span class="text-[11px] font-mono opacity-80 truncate max-w-xs" :title="response.tempFilePath">缓存: {{ response.tempFilePath }}</span>
+        <button @click="copyTempFilePath" class="underline hover:text-amber-900 dark:hover:text-amber-100 text-[11px]">复制路径</button>
       </div>
     </div>
 
@@ -298,44 +339,33 @@ onBeforeUnmount(() => {
         v-if="loading"
         class="h-full w-full flex flex-col items-center justify-center gap-3 text-slate-400"
       >
-        <div class="w-8 h-8 border-3 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-        <span class="text-xs">正在发送 HTTP 请求...</span>
+        <div class="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+        <span class="text-xs font-mono">正在执行网络请求并流式接收响应体...</span>
       </div>
 
       <!-- Error State -->
       <div
         v-else-if="error"
-        class="h-full w-full p-6 flex flex-col items-center justify-center text-center overflow-auto"
+        class="h-full w-full flex flex-col items-center justify-center p-6 text-center"
       >
-        <div class="w-12 h-12 rounded-full bg-rose-50 dark:bg-rose-950/60 text-rose-500 flex items-center justify-center text-xl mb-3">
-          ✕
+        <div class="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-500 flex items-center justify-center mb-3">
+          <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </div>
-        <h4 class="text-sm font-semibold text-rose-600 dark:text-rose-400 mb-1">
-          请求执行失败
-        </h4>
-        <p class="text-xs text-slate-500 dark:text-slate-400 font-mono max-w-lg bg-rose-50/50 dark:bg-rose-950/30 p-3 rounded border border-rose-200/60 dark:border-rose-900/60 break-all leading-relaxed">
-          {{ error }}
-        </p>
-        <span class="text-[11px] text-slate-400 mt-3">
-          提示：若访问自签名证书或本地 HTTPS 服务，可在“设置”标签页勾选“忽略 SSL 证书错误”。
-        </span>
+        <h4 class="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">请求失败</h4>
+        <p class="text-xs font-mono text-rose-500 max-w-md break-all">{{ error }}</p>
       </div>
 
       <!-- Empty State -->
       <div
         v-else-if="!response"
-        class="h-full w-full flex flex-col items-center justify-center p-8 text-slate-400 text-xs text-center"
+        class="h-full w-full flex flex-col items-center justify-center text-slate-400 gap-1.5"
       >
-        <div class="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center text-2xl mb-3">
-          ⚡
-        </div>
-        <p class="font-medium text-slate-600 dark:text-slate-300">暂无响应数据</p>
-        <p class="text-slate-400 mt-1">
-          在上方输入请求 URL 并点击“发送”按钮以发起原生网络请求
-        </p>
+        <span class="text-xs">暂无响应，点击上方“发送”按钮调试接口</span>
       </div>
 
-      <!-- Result View: Pretty or Raw -->
+      <!-- Result View: Pretty & Raw (CodeMirror) -->
       <div
         v-show="response && (activeTab === 'pretty' || activeTab === 'raw')"
         class="h-full w-full"
@@ -343,12 +373,33 @@ onBeforeUnmount(() => {
         <div ref="editorEl" class="h-full w-full overflow-hidden"></div>
       </div>
 
-      <!-- Result View: HTML Preview (Strictly Sandboxed) -->
+      <!-- Result View: Media / Image Preview or HTML Preview (Strictly Sandboxed) -->
       <div
         v-if="response && activeTab === 'preview'"
         class="h-full w-full"
       >
-        <HtmlPreviewIframe :content="response.body" />
+        <div
+          v-if="response.isBinary && isImageResponse && response.bodyBase64"
+          class="h-full w-full flex flex-col items-center justify-center p-4 overflow-auto bg-slate-100/70 dark:bg-slate-950/70"
+        >
+          <img
+            :src="'data:' + (contentType || 'image/png') + ';base64,' + response.bodyBase64"
+            class="max-w-full max-h-full object-contain rounded shadow-sm border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+            alt="Response Image Preview"
+          />
+          <span class="text-xs text-slate-500 font-mono mt-2">{{ contentType }} ({{ formatSize(response.sizeBytes) }})</span>
+        </div>
+        <div
+          v-else-if="response.isBinary"
+          class="h-full w-full flex flex-col items-center justify-center p-6 gap-3 text-slate-500"
+        >
+          <div class="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 text-xl">
+            📦
+          </div>
+          <span class="text-xs font-semibold">二进制数据流 ({{ contentType || 'application/octet-stream' }})</span>
+          <span class="text-xs text-slate-400 font-mono">{{ formatSize(response.sizeBytes) }}</span>
+        </div>
+        <HtmlPreviewIframe v-else :content="response.body" />
       </div>
 
       <!-- Result View: Headers Table -->

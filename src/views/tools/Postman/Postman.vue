@@ -5,6 +5,8 @@ import { invoke } from '@tauri-apps/api/core'
 import { useTabStore } from '@/stores/tabStore'
 import RequestPanel from './components/RequestPanel.vue'
 import ResponsePanel from './components/ResponsePanel.vue'
+import EnvironmentModal from './components/EnvironmentModal.vue'
+import CollectionDrawer, { SavedRequestItem } from './components/CollectionDrawer.vue'
 import { parseCurl, exportToCurl } from './utils/curlParser'
 import {
   PostmanRequestModel,
@@ -79,11 +81,67 @@ const loadingHistory = ref(false)
 const showCurlModal = ref(false)
 const curlInputText = ref('')
 
-// Environment variables state
+// Environment & Collections state
 const showEnvModal = ref(false)
+const showCollections = ref(false)
+const activeEnvName = ref('默认环境')
 const envVariables = ref<KeyValueItem[]>([
   { key: 'baseUrl', value: 'https://httpbin.org', enabled: true }
 ])
+
+function handleEnvChange(vars: KeyValueItem[], name: string) {
+  envVariables.value = vars
+  activeEnvName.value = name
+}
+
+function handleLoadSavedRequest(saved: SavedRequestItem) {
+  try {
+    request.value.method = saved.method || 'GET'
+    request.value.url = saved.url || ''
+    if (saved.headersJson) {
+      try {
+        request.value.headers = JSON.parse(saved.headersJson)
+      } catch {
+        // ignore
+      }
+    }
+    if (saved.paramsJson) {
+      try {
+        request.value.params = JSON.parse(saved.paramsJson)
+      } catch {
+        // ignore
+      }
+    }
+    request.value.bodyType = (saved.bodyType as any) || 'none'
+    if (request.value.bodyType === 'raw') {
+      request.value.bodyRaw = saved.bodyContent || ''
+    } else if (request.value.bodyType === 'form-data') {
+      try {
+        request.value.formData = JSON.parse(saved.bodyContent || '[]')
+      } catch {
+        request.value.formData = []
+      }
+    }
+    if (saved.authJson) {
+      try {
+        request.value.auth = JSON.parse(saved.authJson)
+      } catch {
+        // ignore
+      }
+    }
+    if (saved.settingsJson) {
+      try {
+        request.value.settings = JSON.parse(saved.settingsJson)
+      } catch {
+        // ignore
+      }
+    }
+    saveSnapshot()
+    message.success(`已载入收藏接口: ${saved.name}`)
+  } catch (err: any) {
+    message.error(`载入收藏请求失败: ${err?.message || err}`)
+  }
+}
 
 // Snapshot persistence
 function saveSnapshot() {
@@ -111,7 +169,11 @@ function syncUrlToParams() {
       })
       if (newParams.length > 0) {
         request.value.params = newParams
+      } else {
+        request.value.params = [{ key: '', value: '', enabled: true }]
       }
+    } else {
+      request.value.params = [{ key: '', value: '', enabled: true }]
     }
   } catch {
     // Ignore URL parse errors
@@ -405,7 +467,15 @@ function handleImportCurl() {
     request.value.headers = headers
 
     // 请求体
-    if (parsed.body) {
+    if (parsed.formData && parsed.formData.length > 0) {
+      request.value.bodyType = 'form-data'
+      request.value.formData = parsed.formData.map(f => ({
+        key: f.key,
+        value: f.value,
+        enabled: f.enabled !== false,
+        itemType: f.itemType || 'text'
+      }))
+    } else if (parsed.body) {
       request.value.bodyType = 'raw'
       request.value.bodyRaw = parsed.body
       request.value.rawType = parsed.body.startsWith('{') ? 'json' : 'text'
@@ -439,7 +509,8 @@ async function handleCopyAsCurl() {
       bodyType: request.value.bodyType,
       auth: request.value.auth,
       formData: request.value.formData,
-      urlencodedData: request.value.urlencodedData
+      urlencodedData: request.value.urlencodedData,
+      binaryFilePath: request.value.binaryFilePath
     })
     await navigator.clipboard.writeText(curl)
     message.success('已将当前请求生成 cURL 命令并复制到剪贴板')
@@ -551,15 +622,31 @@ onBeforeUnmount(() => {
               ? 'border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400'
               : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300'
           ]"
-          title="管理环境变量 (支持在 URL、Header、Body 中以 {{key}} 形式引用)"
+          :title="`管理环境变量 (当前: ${activeEnvName || '默认'})`"
         >
-          <span>环境变量</span>
+          <span>环境 ({{ activeEnvName || '默认' }})</span>
           <span
             v-if="envVariables.length > 0"
             class="px-1 text-[10px] rounded-full bg-indigo-100 dark:bg-indigo-900/60 font-mono"
           >
             {{ envVariables.length }}
           </span>
+        </button>
+
+        <button
+          @click="showCollections = !showCollections"
+          :class="[
+            'h-9 px-2.5 rounded-lg border text-xs font-medium transition-colors flex items-center gap-1.5 shrink-0',
+            showCollections
+              ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400'
+              : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+          ]"
+          title="查看与管理请求集合目录树"
+        >
+          <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          </svg>
+          <span>集合</span>
         </button>
 
         <button
@@ -713,89 +800,17 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- Environment Variables Modal Dialog -->
-    <div
-      v-if="showEnvModal"
-      class="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 flex items-center justify-center p-4"
-    >
-      <div class="w-full max-w-lg bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
-        <div class="h-11 px-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0">
-          <span class="text-sm font-bold text-slate-900 dark:text-slate-100">环境变量管理</span>
-          <button @click="showEnvModal = false" class="text-slate-400 hover:text-slate-600">✕</button>
-        </div>
-        <div class="p-4 flex flex-col gap-3">
-          <p class="text-xs text-slate-500">
-            在请求的 URL、Header 或 Body 中输入 <code class="font-mono text-indigo-600">\{\{变量名\}\}</code>，请求发送时将自动替换为对应的变量值。
-          </p>
+    <!-- Environment Modal -->
+    <EnvironmentModal
+      v-model:show="showEnvModal"
+      @change="handleEnvChange"
+    />
 
-          <div class="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden bg-white dark:bg-slate-950">
-            <table class="w-full text-left text-xs border-collapse font-mono">
-              <thead>
-                <tr class="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 text-slate-500">
-                  <th class="w-8 py-1.5 px-2 text-center"></th>
-                  <th class="w-1/3 py-1.5 px-2 border-r border-slate-200 dark:border-slate-800">变量名 (Key)</th>
-                  <th class="py-1.5 px-2">变量值 (Value)</th>
-                  <th class="w-10 py-1.5 px-2 text-center"></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="(item, idx) in envVariables"
-                  :key="idx"
-                  class="border-b border-slate-100 dark:border-slate-900/60"
-                >
-                  <td class="py-1 px-2 text-center">
-                    <input
-                      type="checkbox"
-                      v-model="item.enabled"
-                      class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                  </td>
-                  <td class="py-1 px-2 border-r border-slate-200 dark:border-slate-800">
-                    <input
-                      type="text"
-                      v-model="item.key"
-                      placeholder="变量名"
-                      class="w-full bg-transparent outline-none text-slate-800 dark:text-slate-200"
-                    />
-                  </td>
-                  <td class="py-1 px-2">
-                    <input
-                      type="text"
-                      v-model="item.value"
-                      placeholder="变量值"
-                      class="w-full bg-transparent outline-none text-slate-800 dark:text-slate-200"
-                    />
-                  </td>
-                  <td class="py-1 px-2 text-center">
-                    <button
-                      @click="envVariables.splice(idx, 1)"
-                      class="text-slate-400 hover:text-rose-500"
-                    >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <button
-            @click="envVariables.push({ key: '', value: '', enabled: true })"
-            class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline self-start font-medium"
-          >
-            + 添加变量
-          </button>
-        </div>
-        <div class="h-12 px-4 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end shrink-0">
-          <button
-            @click="showEnvModal = false"
-            class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs"
-          >
-            完成
-          </button>
-        </div>
-      </div>
-    </div>
+    <!-- Collection Drawer -->
+    <CollectionDrawer
+      v-model:show="showCollections"
+      :current-request="request"
+      @load-request="handleLoadSavedRequest"
+    />
   </div>
 </template>

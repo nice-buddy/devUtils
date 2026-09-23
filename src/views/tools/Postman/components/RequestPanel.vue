@@ -66,7 +66,11 @@ function getEditorTheme(isDark: boolean) {
 }
 
 function initEditor() {
-  if (!codeEditorEl.value || editorView) return
+  if (!codeEditorEl.value) return
+  if (editorView) {
+    editorView.destroy()
+    editorView = null
+  }
 
   const updateListener = EditorView.updateListener.of((update) => {
     if (update.docChanged) {
@@ -537,7 +541,7 @@ onBeforeUnmount(() => {
 
         <!-- Body Type: Raw CodeMirror -->
         <div
-          v-else-if="modelValue.bodyType === 'raw'"
+          v-show="modelValue.bodyType === 'raw'"
           class="flex-1 min-h-0 pt-2 flex flex-col"
         >
           <div ref="codeEditorEl" class="flex-1 min-h-0 w-full border border-slate-200 dark:border-slate-800 rounded overflow-hidden"></div>
@@ -545,7 +549,7 @@ onBeforeUnmount(() => {
 
         <!-- Body Type: x-www-form-urlencoded -->
         <div
-          v-else-if="modelValue.bodyType === 'x-www-form-urlencoded'"
+          v-if="modelValue.bodyType === 'x-www-form-urlencoded'"
           class="flex-1 min-h-0 pt-2 flex flex-col"
         >
           <div class="border border-slate-200 dark:border-slate-800 rounded-md overflow-hidden bg-white dark:bg-slate-950">

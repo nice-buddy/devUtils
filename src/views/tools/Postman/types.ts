@@ -47,6 +47,10 @@ export interface PostmanResponseModel {
   statusText: string
   headers: Record<string, string>
   body: string
+  bodyBase64?: string | null
+  isBinary?: boolean
+  isLarge?: boolean
+  tempFilePath?: string | null
   durationMs: number
   sizeBytes: number
 }

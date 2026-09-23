@@ -47,11 +47,16 @@ pub struct HttpRequestPayload {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct HttpResponsePayload {
     pub status: u16,
     pub status_text: String,
     pub headers: HashMap<String, String>,
     pub body: String,
+    pub body_base64: Option<String>,
+    pub is_binary: bool,
+    pub is_large: bool,
+    pub temp_file_path: Option<String>,
     pub duration_ms: u64,
     pub size_bytes: usize,
 }
@@ -180,10 +185,12 @@ pub async fn http_execute(
                             .and_then(|n| n.to_str())
                             .unwrap_or("file")
                             .to_string();
-                        let bytes = tokio::fs::read(path)
+                        let file = tokio::fs::File::open(path)
                             .await
-                            .map_err(|e| format!("读取上传文件失败 '{}': {}", item.value, e))?;
-                        let part = reqwest::multipart::Part::bytes(bytes).file_name(file_name);
+                            .map_err(|e| format!("打开上传文件失败 '{}': {}", item.value, e))?;
+                        let stream = tokio_util::io::ReaderStream::new(file);
+                        let part = reqwest::multipart::Part::stream(reqwest::Body::wrap_stream(stream))
+                            .file_name(file_name);
                         form = form.part(item.key.clone(), part);
                     } else {
                         form = form.text(item.key.clone(), item.value.clone());
@@ -198,10 +205,11 @@ pub async fn http_execute(
                 if !path.exists() {
                     return Err(format!("二进制文件不存在: {}", path_str));
                 }
-                let bytes = tokio::fs::read(path)
+                let file = tokio::fs::File::open(path)
                     .await
-                    .map_err(|e| format!("读取二进制文件失败: {}", e))?;
-                req_builder = req_builder.body(bytes);
+                    .map_err(|e| format!("打开二进制文件失败: {}", e))?;
+                let stream = tokio_util::io::ReaderStream::new(file);
+                req_builder = req_builder.body(reqwest::Body::wrap_stream(stream));
             }
         }
         _ => {
@@ -209,7 +217,7 @@ pub async fn http_execute(
         }
     }
 
-    // 9. 发送请求并统计耗时
+    // 9. 发送请求并统计全流程耗时（包含完整响应体下载）
     let start_time = Instant::now();
     let response = req_builder.send().await.map_err(|e| {
         if e.is_timeout() {
@@ -221,26 +229,100 @@ pub async fn http_execute(
         }
     })?;
 
-    let duration_ms = start_time.elapsed().as_millis() as u64;
     let status = response.status().as_u16();
     let status_text = response.status().canonical_reason().unwrap_or("").to_string();
 
     let mut resp_headers = HashMap::new();
+    let mut content_type = String::new();
     for (key, val) in response.headers().iter() {
         if let Ok(v) = val.to_str() {
+            if key.as_str().eq_ignore_ascii_case("content-type") {
+                content_type = v.to_lowercase();
+            }
             resp_headers.insert(key.as_str().to_string(), v.to_string());
         }
     }
 
-    let bytes = response.bytes().await.map_err(|e| format!("接收响应数据流失败: {}", e))?;
-    let size_bytes = bytes.len();
-    let body = String::from_utf8_lossy(&bytes).to_string();
+    use tokio::io::AsyncWriteExt;
+
+    let mut response = response;
+    let mut bytes_acc = Vec::new();
+    let mut total_size: usize = 0;
+    let mut temp_file: Option<tokio::fs::File> = None;
+    let mut temp_file_path: Option<String> = None;
+
+    while let Some(chunk) = response.chunk().await.map_err(|e| format!("接收响应数据流失败: {}", e))? {
+        total_size += chunk.len();
+        if total_size > 5 * 1024 * 1024 && temp_file.is_none() {
+            let temp_path = std::env::temp_dir().join(format!("devutils_resp_{}.bin", uuid::Uuid::new_v4()));
+            let mut file = tokio::fs::File::create(&temp_path).await.map_err(|e| format!("创建临时缓存文件失败: {}", e))?;
+            file.write_all(&bytes_acc).await.map_err(|e| format!("写入临时缓存文件失败: {}", e))?;
+            temp_file_path = Some(temp_path.to_string_lossy().to_string());
+            temp_file = Some(file);
+        }
+
+        if let Some(file) = &mut temp_file {
+            file.write_all(&chunk).await.map_err(|e| format!("写入临时缓存文件失败: {}", e))?;
+        } else {
+            bytes_acc.extend_from_slice(&chunk);
+        }
+    }
+
+    if let Some(mut file) = temp_file {
+        file.flush().await.map_err(|e| format!("刷新临时缓存文件失败: {}", e))?;
+    }
+
+    let duration_ms = start_time.elapsed().as_millis() as u64;
+    let size_bytes = total_size;
+    let is_large = size_bytes > 5 * 1024 * 1024;
+
+    let is_image = content_type.starts_with("image/");
+    let is_binary_mime = is_image
+        || content_type.starts_with("audio/")
+        || content_type.starts_with("video/")
+        || content_type.contains("octet-stream")
+        || content_type.contains("pdf")
+        || content_type.contains("zip")
+        || content_type.contains("tar")
+        || content_type.contains("gzip");
+
+    use base64::Engine;
+    let (is_binary, body, body_base64) = if is_large {
+        if is_binary_mime {
+            (true, String::new(), None)
+        } else {
+            let preview_len = (1024 * 1024).min(bytes_acc.len());
+            match std::str::from_utf8(&bytes_acc[..preview_len]) {
+                Ok(utf8_str) => {
+                    let mut preview = utf8_str.to_string();
+                    preview.push_str("\n\n... [已自动开启大文本保护：响应体大于 5MB，仅展示前 1MB 预览。完整内容已保存至临时缓存文件] ...");
+                    (false, preview, None)
+                }
+                Err(_) => (true, String::new(), None),
+            }
+        }
+    } else if is_binary_mime {
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes_acc);
+        (true, String::new(), Some(b64))
+    } else {
+        match std::str::from_utf8(&bytes_acc) {
+            Ok(utf8_str) => (false, utf8_str.to_string(), None),
+            Err(_) => {
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes_acc);
+                (true, String::new(), Some(b64))
+            }
+        }
+    };
 
     let resp_payload = HttpResponsePayload {
         status,
         status_text,
         headers: resp_headers,
         body,
+        body_base64,
+        is_binary,
+        is_large,
+        temp_file_path,
         duration_ms,
         size_bytes,
     };

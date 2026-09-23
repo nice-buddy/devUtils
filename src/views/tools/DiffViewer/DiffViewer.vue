@@ -271,14 +271,86 @@ function setModifiedEditorText(text: string) {
   }
 }
 
+// Virtual scrolling state & computed windowing
+const ROW_HEIGHT = 28
+const OVERSCAN_COUNT = 25
+
+const splitScrollContainer = ref<HTMLDivElement | null>(null)
+const splitScrollTop = ref(0)
+const splitContainerHeight = ref(800)
+
+const unifiedScrollContainer = ref<HTMLDivElement | null>(null)
+const unifiedScrollTop = ref(0)
+const unifiedContainerHeight = ref(800)
+
+function onSplitScroll(e: Event) {
+  const el = e.target as HTMLDivElement
+  splitScrollTop.value = el.scrollTop
+  if (el.clientHeight > 0) splitContainerHeight.value = el.clientHeight
+}
+
+function onUnifiedScroll(e: Event) {
+  const el = e.target as HTMLDivElement
+  unifiedScrollTop.value = el.scrollTop
+  if (el.clientHeight > 0) unifiedContainerHeight.value = el.clientHeight
+}
+
+// Side-by-side virtual window
+const splitStartIndex = computed(() => {
+  return Math.max(0, Math.floor(splitScrollTop.value / ROW_HEIGHT) - OVERSCAN_COUNT)
+})
+
+const splitEndIndex = computed(() => {
+  const total = processed.value.sideBySideRows.length
+  const visibleCount = Math.ceil(splitContainerHeight.value / ROW_HEIGHT)
+  return Math.min(total, Math.floor(splitScrollTop.value / ROW_HEIGHT) + visibleCount + OVERSCAN_COUNT)
+})
+
+const visibleSideBySideRows = computed(() => {
+  return processed.value.sideBySideRows.slice(splitStartIndex.value, splitEndIndex.value)
+})
+
+const splitTopSpacer = computed(() => splitStartIndex.value * ROW_HEIGHT)
+const splitBottomSpacer = computed(() => {
+  const remaining = processed.value.sideBySideRows.length - splitEndIndex.value
+  return Math.max(0, remaining * ROW_HEIGHT)
+})
+
+// Unified virtual window
+const unifiedStartIndex = computed(() => {
+  return Math.max(0, Math.floor(unifiedScrollTop.value / ROW_HEIGHT) - OVERSCAN_COUNT)
+})
+
+const unifiedEndIndex = computed(() => {
+  const total = processed.value.unifiedRows.length
+  const visibleCount = Math.ceil(unifiedContainerHeight.value / ROW_HEIGHT)
+  return Math.min(total, Math.floor(unifiedScrollTop.value / ROW_HEIGHT) + visibleCount + OVERSCAN_COUNT)
+})
+
+const visibleUnifiedRows = computed(() => {
+  return processed.value.unifiedRows.slice(unifiedStartIndex.value, unifiedEndIndex.value)
+})
+
+const unifiedTopSpacer = computed(() => unifiedStartIndex.value * ROW_HEIGHT)
+const unifiedBottomSpacer = computed(() => {
+  const remaining = processed.value.unifiedRows.length - unifiedEndIndex.value
+  return Math.max(0, remaining * ROW_HEIGHT)
+})
+
 // Navigation & jumping
 function scrollToActiveHunk() {
-  nextTick(() => {
-    const el = containerRef.value?.querySelector(`[data-hunk-index="${activeHunkIndex.value}"]`)
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const hunkIdx = activeHunkIndex.value
+  if (viewMode.value === 'split' && splitScrollContainer.value) {
+    const rowIdx = processed.value.sideBySideRows.findIndex(r => r.hunkIndex === hunkIdx)
+    if (rowIdx !== -1) {
+      splitScrollContainer.value.scrollTop = Math.max(0, rowIdx * ROW_HEIGHT - 60)
     }
-  })
+  } else if (viewMode.value === 'unified' && unifiedScrollContainer.value) {
+    const rowIdx = processed.value.unifiedRows.findIndex(r => r.hunkIndex === hunkIdx)
+    if (rowIdx !== -1) {
+      unifiedScrollContainer.value.scrollTop = Math.max(0, rowIdx * ROW_HEIGHT - 60)
+    }
+  }
 }
 
 function handleNextDiff() {
@@ -391,8 +463,14 @@ watch(
 
 watch(viewMode, async (mode) => {
   saveSnapshot()
+  await nextTick()
+  if (splitScrollContainer.value && splitScrollContainer.value.clientHeight > 0) {
+    splitContainerHeight.value = splitScrollContainer.value.clientHeight
+  }
+  if (unifiedScrollContainer.value && unifiedScrollContainer.value.clientHeight > 0) {
+    unifiedContainerHeight.value = unifiedScrollContainer.value.clientHeight
+  }
   if (mode === 'edit') {
-    await nextTick()
     if (!originalView) initOriginalEditor()
     if (!modifiedView) initModifiedEditor()
     originalView?.requestMeasure()
@@ -403,6 +481,14 @@ watch(viewMode, async (mode) => {
 onMounted(() => {
   updateDiff(true)
   window.addEventListener('keydown', handleKeyDown)
+  nextTick(() => {
+    if (splitScrollContainer.value && splitScrollContainer.value.clientHeight > 0) {
+      splitContainerHeight.value = splitScrollContainer.value.clientHeight
+    }
+    if (unifiedScrollContainer.value && unifiedScrollContainer.value.clientHeight > 0) {
+      unifiedContainerHeight.value = unifiedScrollContainer.value.clientHeight
+    }
+  })
   if (viewMode.value === 'edit') {
     initOriginalEditor()
     initModifiedEditor()
@@ -691,7 +777,11 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Scrollable Diff Table -->
-        <div class="flex-1 min-h-0 w-full overflow-auto font-mono text-[12px] leading-relaxed">
+        <div
+          ref="splitScrollContainer"
+          @scroll.passive="onSplitScroll"
+          class="flex-1 min-h-0 w-full overflow-auto font-mono text-[12px] leading-relaxed"
+        >
           <!-- Empty State -->
           <div
             v-if="processed.sideBySideRows.length === 0"
@@ -713,8 +803,13 @@ onBeforeUnmount(() => {
               <col class="w-[calc(50%-3.5rem)]" />
             </colgroup>
             <tbody>
+              <!-- Top Spacer for Virtual Scroll -->
+              <tr v-if="splitTopSpacer > 0" :style="{ height: splitTopSpacer + 'px' }" class="border-none pointer-events-none">
+                <td colspan="6" class="p-0 m-0 border-none"></td>
+              </tr>
+
               <tr
-                v-for="row in processed.sideBySideRows"
+                v-for="row in visibleSideBySideRows"
                 :key="row.id"
                 :data-hunk-index="row.hunkIndex !== null ? row.hunkIndex : undefined"
                 :class="[
@@ -723,6 +818,7 @@ onBeforeUnmount(() => {
                     ? 'ring-1 ring-inset ring-indigo-500/80 bg-indigo-500/[0.04]'
                     : ''
                 ]"
+                style="height: 28px;"
               >
                 <!-- Left Line Number -->
                 <td
@@ -752,7 +848,7 @@ onBeforeUnmount(() => {
                   {{ row.left.tag === 'delete' ? '-' : '' }}
                 </td>
 
-                <!-- Left Content -->
+                <!-- Left Content with Character-level Highlight -->
                 <td
                   :class="[
                     'py-0.5 px-2 whitespace-pre-wrap break-all border-r border-slate-200 dark:border-slate-800',
@@ -763,7 +859,16 @@ onBeforeUnmount(() => {
                       : 'text-slate-800 dark:text-slate-200'
                   ]"
                 >
-                  {{ row.left.text }}
+                  <template v-if="row.left.inline_spans && row.left.inline_spans.length > 0">
+                    <span
+                      v-for="(span, sIdx) in row.left.inline_spans"
+                      :key="sIdx"
+                      :class="span.tag === 'delete' ? 'bg-rose-200 dark:bg-rose-900/80 text-rose-950 dark:text-rose-100 rounded-[2px] px-[1px] font-semibold' : ''"
+                    >{{ span.text }}</span>
+                  </template>
+                  <template v-else>
+                    {{ row.left.text }}
+                  </template>
                 </td>
 
                 <!-- Right Line Number -->
@@ -794,7 +899,7 @@ onBeforeUnmount(() => {
                   {{ row.right.tag === 'insert' ? '+' : '' }}
                 </td>
 
-                <!-- Right Content -->
+                <!-- Right Content with Character-level Highlight -->
                 <td
                   :class="[
                     'py-0.5 px-2 whitespace-pre-wrap break-all',
@@ -805,8 +910,22 @@ onBeforeUnmount(() => {
                       : 'text-slate-800 dark:text-slate-200'
                   ]"
                 >
-                  {{ row.right.text }}
+                  <template v-if="row.right.inline_spans && row.right.inline_spans.length > 0">
+                    <span
+                      v-for="(span, sIdx) in row.right.inline_spans"
+                      :key="sIdx"
+                      :class="span.tag === 'insert' ? 'bg-emerald-200 dark:bg-emerald-900/80 text-emerald-950 dark:text-emerald-100 rounded-[2px] px-[1px] font-semibold' : ''"
+                    >{{ span.text }}</span>
+                  </template>
+                  <template v-else>
+                    {{ row.right.text }}
+                  </template>
                 </td>
+              </tr>
+
+              <!-- Bottom Spacer for Virtual Scroll -->
+              <tr v-if="splitBottomSpacer > 0" :style="{ height: splitBottomSpacer + 'px' }" class="border-none pointer-events-none">
+                <td colspan="6" class="p-0 m-0 border-none"></td>
               </tr>
             </tbody>
           </table>
@@ -827,7 +946,11 @@ onBeforeUnmount(() => {
         </div>
 
         <!-- Scrollable Unified Table -->
-        <div class="flex-1 min-h-0 w-full overflow-auto font-mono text-[12px] leading-relaxed">
+        <div
+          ref="unifiedScrollContainer"
+          @scroll.passive="onUnifiedScroll"
+          class="flex-1 min-h-0 w-full overflow-auto font-mono text-[12px] leading-relaxed"
+        >
           <!-- Empty State -->
           <div
             v-if="processed.unifiedRows.length === 0"
@@ -847,8 +970,13 @@ onBeforeUnmount(() => {
               <col class="w-[calc(100%-7.5rem)]" />
             </colgroup>
             <tbody>
+              <!-- Top Spacer for Virtual Scroll -->
+              <tr v-if="unifiedTopSpacer > 0" :style="{ height: unifiedTopSpacer + 'px' }" class="border-none pointer-events-none">
+                <td colspan="4" class="p-0 m-0 border-none"></td>
+              </tr>
+
               <tr
-                v-for="row in processed.unifiedRows"
+                v-for="row in visibleUnifiedRows"
                 :key="row.id"
                 :data-hunk-index="row.hunkIndex !== null ? row.hunkIndex : undefined"
                 :class="[
@@ -862,6 +990,7 @@ onBeforeUnmount(() => {
                     ? 'ring-1 ring-inset ring-indigo-500/80 bg-indigo-500/[0.04]'
                     : ''
                 ]"
+                style="height: 28px;"
               >
                 <!-- Old Line Num -->
                 <td
@@ -901,10 +1030,24 @@ onBeforeUnmount(() => {
                   {{ row.tag === 'delete' ? '-' : row.tag === 'insert' ? '+' : ' ' }}
                 </td>
 
-                <!-- Content -->
+                <!-- Content with Character-level Highlight -->
                 <td class="py-0.5 px-2.5 whitespace-pre-wrap break-all">
-                  {{ row.text }}
+                  <template v-if="row.inline_spans && row.inline_spans.length > 0">
+                    <span
+                      v-for="(span, sIdx) in row.inline_spans"
+                      :key="sIdx"
+                      :class="span.tag === 'delete' ? 'bg-rose-200 dark:bg-rose-900/80 text-rose-950 dark:text-rose-100 rounded-[2px] px-[1px] font-semibold' : span.tag === 'insert' ? 'bg-emerald-200 dark:bg-emerald-900/80 text-emerald-950 dark:text-emerald-100 rounded-[2px] px-[1px] font-semibold' : ''"
+                    >{{ span.text }}</span>
+                  </template>
+                  <template v-else>
+                    {{ row.text }}
+                  </template>
                 </td>
+              </tr>
+
+              <!-- Bottom Spacer for Virtual Scroll -->
+              <tr v-if="unifiedBottomSpacer > 0" :style="{ height: unifiedBottomSpacer + 'px' }" class="border-none pointer-events-none">
+                <td colspan="4" class="p-0 m-0 border-none"></td>
               </tr>
             </tbody>
           </table>

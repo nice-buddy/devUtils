@@ -1,10 +1,11 @@
-import type { DiffItem } from './diffService'
+import type { DiffItem, InlineSpan } from './diffService'
 import { formatJson } from '@/views/tools/JsonSuite/utils/losslessJson'
 
 export interface SideBySideCell {
   lineNum: number | null
   tag: 'delete' | 'insert' | 'equal' | 'empty'
   text: string
+  inline_spans?: InlineSpan[]
 }
 
 export interface SideBySideRow {
@@ -21,6 +22,7 @@ export interface UnifiedRow {
   newLineNum: number | null
   tag: 'delete' | 'insert' | 'equal'
   text: string
+  inline_spans?: InlineSpan[]
 }
 
 export interface DiffStats {
@@ -141,7 +143,8 @@ export function processDiff(items: DiffItem[]): ProcessedDiff {
           oldLineNum: del.old_index !== null ? del.old_index + 1 : null,
           newLineNum: null,
           tag: 'delete',
-          text: stripTrailingNewline(del.value)
+          text: stripTrailingNewline(del.value),
+          inline_spans: del.inline_spans
         })
       }
       for (const ins of hunkInserts) {
@@ -151,7 +154,8 @@ export function processDiff(items: DiffItem[]): ProcessedDiff {
           oldLineNum: null,
           newLineNum: ins.new_index !== null ? ins.new_index + 1 : null,
           tag: 'insert',
-          text: stripTrailingNewline(ins.value)
+          text: stripTrailingNewline(ins.value),
+          inline_spans: ins.inline_spans
         })
       }
 
@@ -168,7 +172,8 @@ export function processDiff(items: DiffItem[]): ProcessedDiff {
             ? {
                 lineNum: del.old_index !== null ? del.old_index + 1 : null,
                 tag: 'delete',
-                text: stripTrailingNewline(del.value)
+                text: stripTrailingNewline(del.value),
+                inline_spans: del.inline_spans
               }
             : {
                 lineNum: null,
@@ -179,7 +184,8 @@ export function processDiff(items: DiffItem[]): ProcessedDiff {
             ? {
                 lineNum: ins.new_index !== null ? ins.new_index + 1 : null,
                 tag: 'insert',
-                text: stripTrailingNewline(ins.value)
+                text: stripTrailingNewline(ins.value),
+                inline_spans: ins.inline_spans
               }
             : {
                 lineNum: null,

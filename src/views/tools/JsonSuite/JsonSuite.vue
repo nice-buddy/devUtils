@@ -29,6 +29,7 @@ const errorMessage = ref<string>('')
 const hasSnowflakeId = ref<boolean>(false)
 const rawCharCount = ref<number>(0)
 const rawLineCount = ref<number>(1)
+const isOver5MB = ref<boolean>(false)
 
 // DOM refs for editor containers
 const inputEditorEl = ref<HTMLDivElement | null>(null)
@@ -40,6 +41,8 @@ let outputView: EditorView | null = null
 
 const themeCompartmentInput = new Compartment()
 const themeCompartmentOutput = new Compartment()
+const readOnlyCompartmentInput = new Compartment()
+const editableCompartmentInput = new Compartment()
 
 // Default sample data with 19-digit snowflake IDs, single quotes, comments, trailing commas
 const SAMPLE_DATA = `{
@@ -171,9 +174,32 @@ function updateValidationAndStats(doc: string, immediate = false) {
 
     const len = doc.length
     if (len > 5 * 1024 * 1024) {
+      if (!isOver5MB.value) {
+        isOver5MB.value = true
+        if (inputView) {
+          inputView.dispatch({
+            effects: [
+              readOnlyCompartmentInput.reconfigure(EditorState.readOnly.of(true)),
+              editableCompartmentInput.reconfigure(EditorView.editable.of(false))
+            ]
+          })
+        }
+      }
       hasSnowflakeId.value = true
-      errorMessage.value = '文本超过 5MB，已自动开启轻量只读保护模式以防止界面阻塞'
+      errorMessage.value = '文本超过 5MB，已自动开启轻量安全只读锁定保护以避免界面卡死'
       return
+    } else {
+      if (isOver5MB.value) {
+        isOver5MB.value = false
+        if (inputView) {
+          inputView.dispatch({
+            effects: [
+              readOnlyCompartmentInput.reconfigure(EditorState.readOnly.of(false)),
+              editableCompartmentInput.reconfigure(EditorView.editable.of(true))
+            ]
+          })
+        }
+      }
     }
 
     try {
@@ -207,6 +233,8 @@ function initInputEditor() {
   if (!inputEditorEl.value || inputView) return
 
   const initialDoc = props.initialSnapshot?.raw ?? SAMPLE_DATA
+  const initialOver5MB = initialDoc.length > 5 * 1024 * 1024
+  isOver5MB.value = initialOver5MB
 
   const updateListener = EditorView.updateListener.of((update) => {
     if (update.docChanged) {
@@ -227,6 +255,8 @@ function initInputEditor() {
         basicSetup,
         json(),
         themeCompartmentInput.of(getEditorTheme(themeStore.isDark)),
+        readOnlyCompartmentInput.of(EditorState.readOnly.of(initialOver5MB)),
+        editableCompartmentInput.of(EditorView.editable.of(!initialOver5MB)),
         updateListener
       ]
     }),
@@ -274,7 +304,28 @@ function getInputContent(): string {
 }
 
 // Action Handlers
+function handleSaveAsFile() {
+  const content = getInputContent()
+  if (!content) return
+  try {
+    const blob = new Blob([content], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `devutils_large_${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    message.success('已触发大文件下载保存')
+  } catch {
+    message.error('保存文件失败')
+  }
+}
+
 function handleFormat() {
+  if (isOver5MB.value) {
+    message.warning('文本超过 5MB，已处于安全只读锁定状态，禁止执行高耗时 AST 变换')
+    return
+  }
   const raw = getInputContent()
   if (!raw.trim()) {
     message.warning('请输入需要格式化的 JSON 内容')
@@ -295,6 +346,10 @@ function handleFormat() {
 }
 
 function handleSortKeys() {
+  if (isOver5MB.value) {
+    message.warning('文本超过 5MB，已处于安全只读锁定状态，禁止执行高耗时 AST 变换')
+    return
+  }
   const raw = getInputContent()
   if (!raw.trim()) {
     message.warning('请输入需要排序的 JSON 内容')
@@ -315,6 +370,10 @@ function handleSortKeys() {
 }
 
 function handleMinify() {
+  if (isOver5MB.value) {
+    message.warning('文本超过 5MB，已处于安全只读锁定状态，禁止执行高耗时 AST 变换')
+    return
+  }
   const raw = getInputContent()
   if (!raw.trim()) {
     message.warning('请输入需要压缩的 JSON 内容')
@@ -335,6 +394,10 @@ function handleMinify() {
 }
 
 function handleRepair() {
+  if (isOver5MB.value) {
+    message.warning('文本超过 5MB，已处于安全只读锁定状态，禁止执行高耗时 AST 变换')
+    return
+  }
   const raw = getInputContent()
   if (!raw.trim()) {
     message.warning('请输入需要修复的 JSON 内容')
@@ -362,6 +425,10 @@ function handleRepair() {
 }
 
 function handleExecuteJsonPath() {
+  if (isOver5MB.value) {
+    message.warning('文本超过 5MB，已处于安全只读锁定状态，禁止执行高耗时 AST 变换')
+    return
+  }
   const raw = getInputContent()
   if (!raw.trim()) {
     message.warning('请输入 JSON 内容后再执行查询')
@@ -525,7 +592,11 @@ onBeforeUnmount(() => {
         <!-- Action Buttons -->
         <button
           @click="handleFormat"
-          class="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors shrink-0"
+          :disabled="isOver5MB"
+          :class="[
+            'flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors shrink-0',
+            isOver5MB ? 'opacity-50 cursor-not-allowed' : ''
+          ]"
           title="美化 JSON 排版，精确保留大整数"
         >
           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -536,7 +607,11 @@ onBeforeUnmount(() => {
 
         <button
           @click="handleSortKeys"
-          class="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors shrink-0"
+          :disabled="isOver5MB"
+          :class="[
+            'flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors shrink-0',
+            isOver5MB ? 'opacity-50 cursor-not-allowed' : ''
+          ]"
           title="按字母升序递归排序所有对象字段键名"
         >
           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -547,7 +622,11 @@ onBeforeUnmount(() => {
 
         <button
           @click="handleMinify"
-          class="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors shrink-0"
+          :disabled="isOver5MB"
+          :class="[
+            'flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors shrink-0',
+            isOver5MB ? 'opacity-50 cursor-not-allowed' : ''
+          ]"
           title="去除空白符单行压缩，大数值字面量不受影响"
         >
           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -558,7 +637,11 @@ onBeforeUnmount(() => {
 
         <button
           @click="handleRepair"
-          class="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 transition-colors shrink-0"
+          :disabled="isOver5MB"
+          :class="[
+            'flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 transition-colors shrink-0',
+            isOver5MB ? 'opacity-50 cursor-not-allowed' : ''
+          ]"
           title="智能清除注释、单引号纠正双引号、剔除尾随逗号"
         >
           <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -652,6 +735,25 @@ onBeforeUnmount(() => {
       </div>
     </header>
 
+    <!-- Sub Warning Bar: >5MB Protection Active -->
+    <div
+      v-if="isOver5MB"
+      class="h-7 px-3 bg-amber-50 dark:bg-amber-950/60 border-b border-amber-200 dark:border-amber-900/60 flex items-center justify-between text-xs text-amber-700 dark:text-amber-300 shrink-0"
+    >
+      <div class="flex items-center gap-1.5">
+        <svg class="w-3.5 h-3.5 text-amber-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+        <span>文本超过 5MB，已自动开启轻量安全只读锁定保护（禁止前端重度 AST 解析以防卡死）</span>
+      </div>
+      <button
+        @click="handleSaveAsFile"
+        class="px-2 py-0.5 rounded bg-amber-200 dark:bg-amber-900 text-amber-800 dark:text-amber-100 hover:bg-amber-300 text-[11px] font-medium transition-colors"
+      >
+        另存为本地文件
+      </button>
+    </div>
+
     <!-- Sub Header: JSONPath Filter Bar -->
     <div class="h-9 px-3 bg-slate-100/70 dark:bg-slate-950/70 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2 shrink-0">
       <div class="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 shrink-0 font-medium">
@@ -681,7 +783,11 @@ onBeforeUnmount(() => {
 
       <button
         @click="handleExecuteJsonPath"
-        class="px-2.5 py-1 rounded text-xs font-medium bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors shrink-0"
+        :disabled="isOver5MB"
+        :class="[
+          'px-2.5 py-1 rounded text-xs font-medium bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors shrink-0',
+          isOver5MB ? 'opacity-50 cursor-not-allowed' : ''
+        ]"
       >
         提取
       </button>

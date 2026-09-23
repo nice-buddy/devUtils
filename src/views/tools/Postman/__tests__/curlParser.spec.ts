@@ -120,7 +120,7 @@ describe('cURL 命令行解析与导出', () => {
     expect(queryExport).toContain('https://api.example.com/data?page=1&api_key=query-key-123')
   })
 
-  it('导出 cURL 正确序列化 urlencoded 与 form-data 请求体至 -d', () => {
+  it('导出 cURL 正确序列化 urlencoded 为 -d，并规范序列化 form-data 为 -F', () => {
     const urlencodedExport = exportToCurl({
       method: 'POST',
       url: 'https://api.example.com/form',
@@ -139,10 +139,24 @@ describe('cURL 命令行解析与导出', () => {
       url: 'https://api.example.com/upload',
       bodyType: 'form-data',
       formData: [
-        { key: 'field1', value: 'val1', enabled: true },
-        { key: 'field2', value: 'val2', enabled: false }
+        { key: 'textField', value: 'testValue', enabled: true, itemType: 'text' },
+        { key: 'fileField', value: '/path/to/avatar.png', enabled: true, itemType: 'file' },
+        { key: 'disabledField', value: 'skip', enabled: false }
       ]
     })
-    expect(formExport).toContain(`-d 'field1=val1'`)
+    expect(formExport).toContain(`-F "textField=testValue"`)
+    expect(formExport).toContain(`-F "fileField=@/path/to/avatar.png"`)
+    expect(formExport).not.toContain('disabledField')
+    expect(formExport).not.toContain('-d')
+  })
+
+  it('解析 cURL 支持 -F / --form multipart 表单与文件', () => {
+    const curl = `curl -X POST "https://api.example.com/upload" -F "username=devuser" -F "avatar=@/images/pic.png"`
+    const parsed = parseCurl(curl)
+    expect(parsed.method).toBe('POST')
+    expect(parsed.bodyType).toBe('form-data')
+    expect(parsed.formData?.length).toBe(2)
+    expect(parsed.formData?.[0]).toEqual({ key: 'username', value: 'devuser', enabled: true, itemType: 'text' })
+    expect(parsed.formData?.[1]).toEqual({ key: 'avatar', value: '/images/pic.png', enabled: true, itemType: 'file' })
   })
 })

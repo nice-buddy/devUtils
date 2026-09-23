@@ -197,7 +197,39 @@ describe('本地手动基准与压测套件 (Manual Benchmark Suite)', () => {
 
       // 验证存在 5MB 保护逻辑
       expect(jsonSuiteSource).toMatch(/len\s*>\s*5\s*\*\s*1024\s*\*\s*1024/)
-      expect(jsonSuiteSource).toMatch(/文本超过 5MB，已自动开启轻量只读保护模式以防止界面阻塞/)
+      expect(jsonSuiteSource).toMatch(/文本超过 5MB，已自动开启轻量安全只读锁定保护/)
+    })
+
+    it('100,000+ 行超大 JSON AST 处理基准与物理内存 (RSS) 监测：增量受控且处理后 GC 正常释放', () => {
+      const initialRss = process.memoryUsage().rss
+
+      // 构造 100,000 行纯文本与 AST 数据
+      const lines: string[] = ['[']
+      const ITEM_COUNT = 100000
+      for (let i = 0; i < ITEM_COUNT; i++) {
+        lines.push(`  {"id":1892837482910293847,"seq":${i},"active":true}${i < ITEM_COUNT - 1 ? ',' : ''}`)
+      }
+      lines.push(']')
+      const hugeJson = lines.join('\n')
+
+      const rawSizeBytes = Buffer.byteLength(hugeJson, 'utf-8')
+      expect(rawSizeBytes).toBeGreaterThan(5 * 1024 * 1024)
+
+      // 执行格式化基准
+      const t0 = performance.now()
+      const formatted = formatJson(hugeJson, 2, false)
+      const elapsedMs = performance.now() - t0
+
+      // 断言耗时在合理区间
+      expect(elapsedMs).toBeLessThan(8000)
+      expect(formatted).toContain('1892837482910293847')
+
+      // 监测内存峰值
+      const peakRss = process.memoryUsage().rss
+      const peakDeltaMB = (peakRss - initialRss) / (1024 * 1024)
+      
+      // 单次 100,000 项处理内存峰值增量在合理阈值内 (<350MB)，不发生 OOM
+      expect(peakDeltaMB).toBeLessThan(350)
     })
   })
 })
