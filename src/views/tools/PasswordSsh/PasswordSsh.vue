@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import {
   NAlert,
   NButton,
+  NInput,
   NInputNumber,
   NRadioButton,
   NRadioGroup,
@@ -13,6 +14,7 @@ import {
 } from 'naive-ui'
 import { useTabStore } from '@/stores/tabStore'
 import { estimateEntropy, generatePasswords, type PasswordOptions } from './utils/password'
+import { parsePublicKeys, type ParsedPublicKey } from './utils/sshKey'
 
 const props = defineProps<{
   tabId: string
@@ -39,6 +41,11 @@ const results = ref<string[]>(props.initialSnapshot?.results ?? [])
 const errorMessage = ref<string>('')
 let snapshotTimer: ReturnType<typeof setTimeout> | null = null
 
+const sshInput = ref<string>(props.initialSnapshot?.sshInput ?? '')
+const sshKeys = ref<ParsedPublicKey[]>([])
+const sshIssues = ref<{ line: number; message: string }[]>([])
+let sshTimer: ReturnType<typeof setTimeout> | null = null
+
 const options = computed<PasswordOptions>(() => ({
   length: length.value,
   upper: charsets.value.upper,
@@ -61,6 +68,7 @@ function snapshotPayload(): Record<string, any> {
     count: count.value,
     persistResults: persistResults.value
   }
+  payload.sshInput = sshInput.value
   if (persistResults.value) payload.results = [...results.value]
   return payload
 }
@@ -91,12 +99,34 @@ function copyText(text: string) {
   message.success('已复制')
 }
 
+function typeLabel(key: ParsedPublicKey): string {
+  if (key.type === 'ssh-ed25519') return 'ED25519'
+  if (key.type === 'ssh-rsa') return 'RSA'
+  if (key.type === 'sk-ssh-ed25519@openssh.com') return 'ED25519-SK'
+  if (key.type === 'sk-ecdsa-sha2-nistp256@openssh.com') return 'ECDSA-SK'
+  if (key.type.startsWith('ecdsa-sha2-')) return 'ECDSA'
+  return key.type
+}
+
+function runSshParse() {
+  const result = parsePublicKeys(sshInput.value)
+  sshKeys.value = result.keys
+  sshIssues.value = result.issues
+}
+
+function scheduleSshParse() {
+  if (sshTimer) clearTimeout(sshTimer)
+  sshTimer = setTimeout(runSshParse, 250)
+}
+
 watch([panel, length, charsets, excludeAmbiguous, count], scheduleSnapshot, { deep: true })
+watch(sshInput, scheduleSnapshot)
 // 敏感开关不走防抖：关闭时立即写库，快照里不再携带 results。
 watch(persistResults, () => saveSnapshot())
 
 onBeforeUnmount(() => {
   if (snapshotTimer) clearTimeout(snapshotTimer)
+  if (sshTimer) clearTimeout(sshTimer)
   saveSnapshot()
 })
 </script>
@@ -152,8 +182,50 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
-      <section v-else class="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 text-sm text-slate-500 dark:text-slate-400">
-        SSH Key 指纹解析将在第二阶段批次 C 交付（需要引入成熟的密钥解析能力）。
+      <section v-else class="space-y-4">
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-slate-500 dark:text-slate-400">粘贴 OpenSSH 公钥，支持 authorized_keys 多行与 # 注释</span>
+            <NButton size="tiny" @click="runSshParse">解析</NButton>
+          </div>
+          <NInput
+            v-model:value="sshInput"
+            type="textarea"
+            :autosize="{ minRows: 5, maxRows: 10 }"
+            placeholder="ssh-ed25519 AAAAC3Nza... user@host"
+            @update:value="scheduleSshParse"
+          />
+        </div>
+
+        <NAlert v-if="sshIssues.length" type="error" :bordered="false">
+          <div v-for="issue in sshIssues" :key="issue.line">第 {{ issue.line }} 行：{{ issue.message }}</div>
+        </NAlert>
+
+        <div v-for="key in sshKeys" :key="key.line" class="rounded-lg border border-slate-200 dark:border-slate-800 p-3 space-y-2">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-medium">{{ typeLabel(key) }}</span>
+            <NTag v-if="key.curve" size="small">{{ key.curve }}</NTag>
+            <NTag v-else-if="key.bits" size="small">{{ key.bits }} 位</NTag>
+            <span v-if="key.comment" class="text-xs text-slate-400 truncate">{{ key.comment }}</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-16 text-xs text-slate-500 dark:text-slate-400 shrink-0">SHA256</span>
+            <code class="flex-1 text-xs font-mono break-all">{{ key.sha256 }}</code>
+            <NButton size="tiny" @click="copyText(key.sha256)">复制</NButton>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-16 text-xs text-slate-500 dark:text-slate-400 shrink-0">MD5</span>
+            <code class="flex-1 text-xs font-mono break-all">{{ key.md5 }}</code>
+            <NButton size="tiny" @click="copyText(key.md5)">复制</NButton>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-16 text-xs text-slate-500 dark:text-slate-400 shrink-0">整行</span>
+            <code class="flex-1 text-xs font-mono truncate">{{ key.rawLine }}</code>
+            <NButton size="tiny" @click="copyText(key.rawLine)">复制</NButton>
+          </div>
+        </div>
+
+        <p v-if="!sshKeys.length && !sshIssues.length" class="text-xs text-slate-400">粘贴公钥后自动解析</p>
       </section>
     </div>
   </div>
