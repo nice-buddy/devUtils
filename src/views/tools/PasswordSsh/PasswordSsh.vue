@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   NAlert,
   NButton,
@@ -123,6 +123,11 @@ watch([panel, length, charsets, excludeAmbiguous, count], scheduleSnapshot, { de
 watch(sshInput, scheduleSnapshot)
 // 敏感开关不走防抖：关闭时立即写库，快照里不再携带 results。
 watch(persistResults, () => saveSnapshot())
+
+// 指纹是派生结果、不入快照，挂载时用回填的输入重算一次，避免重开后只剩输入没有结果
+onMounted(() => {
+  if (sshInput.value.trim()) runSshParse()
+})
 
 onBeforeUnmount(() => {
   if (snapshotTimer) clearTimeout(snapshotTimer)
