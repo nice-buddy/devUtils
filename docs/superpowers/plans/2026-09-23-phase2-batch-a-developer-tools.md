@@ -1365,7 +1365,7 @@ export function parseQuery(search: string, autoDecode: boolean): QueryEntry[] {
 
 export function parseUrl(input: string, autoDecode = true): ParsedUrl {
   const text = input.trim()
-  if (!text) return { ...EMPTY_PARSED_URL }
+  if (!text) return { ...EMPTY_PARSED_URL, entries: [] }
   const hasScheme = SCHEME_PATTERN.test(text)
   let url: URL
   try {
@@ -1373,6 +1373,7 @@ export function parseUrl(input: string, autoDecode = true): ParsedUrl {
   } catch {
     return {
       ...EMPTY_PARSED_URL,
+      entries: [],
       valid: false,
       error: 'URL 解析失败：请检查协议、主机与端口是否完整',
       schemeInserted: !hasScheme
@@ -1507,7 +1508,9 @@ function updateField(key: (typeof fields)[number]['key'], value: string) {
 
 function updateEntry(index: number, patch: Partial<QueryEntry>) {
   applyDraft(draft => {
-    draft.entries[index] = { ...draft.entries[index], ...patch }
+    const current = draft.entries[index]
+    const nextHasEquals = patch.hasEquals ?? (patch.value !== undefined ? true : current.hasEquals)
+    draft.entries[index] = { ...current, ...patch, hasEquals: nextHasEquals }
   })
 }
 
@@ -1706,6 +1709,8 @@ describe('radix-case 命名风格', () => {
     expect(splitWords('getHTTPResponse')).toEqual(['get', 'HTTP', 'Response'])
     expect(splitWords('XML2JSON')).toEqual(['XML2', 'JSON'])
     expect(splitWords('user2Id')).toEqual(['user2', 'Id'])
+    // 规则 3 优先：IPv4 按连续大写规则切为 I + Pv4（spec 5.7 的 ip_v4_address 已作废）。
+    expect(splitWords('IPv4Address')).toEqual(['I', 'Pv4', 'Address'])
     expect(splitWords('snake_case-name.dot')).toEqual(['snake', 'case', 'name', 'dot'])
   })
 
