@@ -64,6 +64,7 @@ src/views/tools/<ToolName>/
 - 回填：所有状态初值统一走 `props.initialSnapshot?.x ?? <默认值>`。
 - 落库：状态变更时调用 `tabStore.updateTabSnapshot(props.tabId, {...})`，即第一期 `JsonSuite.vue` / `DiffViewer.vue` 的 `saveSnapshot()` 模式；文本类输入做防抖（250ms 量级）。
 - 存储位置不变：SQLite `tool_state_snapshots.snapshot_data_json`，随 Tab 关闭 / LRU 卸载 / 应用退出自动持久化，重开 Tab 时回填。
+- 敏感开关不走防抖：普通文本输入走防抖，但关闭「持久化生成结果」这类敏感开关时必须绕过防抖立即写库，否则用户在防抖窗口内切走 Tab 或退出应用会留下冗余明文。
 - 只持久化「输入内容 + 视图选项」，不持久化纯派生的计算结果与错误信息。
 
 ### 2.4 复用点
@@ -110,9 +111,13 @@ src/views/tools/<ToolName>/
 - 单文档输入；根节点为对象或数组。
 - 数组**全量**扫描所有元素并合并类型，只看首元素是明确禁止的行为。
 - 对象合并：所有出现过的 key 取并集；某个对象元素缺该 key → 该字段标记为**可选**。
-- 类型冲突 → 联合类型。
+- 类型冲突 → 联合类型；其中 `integer ∪ number` 收敛为 `number`（避免产出 `int64 | float64` 这种无意义联合）。
 - `null` 不单独成类型：字段值出现过 `null` 时按「可为空」处理（可选 + 注释）。
-- 大整数：整数字面量超出 `Number.MAX_SAFE_INTEGER`（如 19 位雪花 ID）一律推导为字符串类型，并附注释「原值超出 JS 安全整数范围，已按字符串处理」。
+- 大整数判定：第一期 `LosslessJSON` 配置为 `useNativeBigInt: true`，超出 `Number.MAX_SAFE_INTEGER` 的整数字面量解析后是原生 `bigint`。推导引擎必须以 `typeof value === 'bigint'` 识别，禁止写成 `typeof value === 'number' && value > Number.MAX_SAFE_INTEGER`（那条分支在本配置下永远命中不了，会静默漏掉全部雪花 ID）。
+- 大整数映射按目标语言分流（生成代码必须能被真实反序列化）：
+  - TypeScript：推导为 `string`（TS 没有 64 位整型），附注释「原值超出 JS 安全整数范围，已按字符串处理」。
+  - Go / Rust / Java：值落在 `int64` 范围（-2^63 ~ 2^63-1）时分别推导为 `int64` / `i64` / `Long`，超出该范围时回退为 `string` / `String` 并附同样的注释。把 19 位雪花 ID 一律硬写成字符串，会让这三个语言的结构体在反序列化原始数值 JSON 时直接报类型不匹配。
+  - 该分流只影响**生成代码的类型标注**，不影响工具内部「不经过 Number、全程无损」的总原则。
 - 空数组 / 空对象 → `any` / `interface{}` / `Object` / `Value`，并给出提示。
 - 根为标量或标量数组：TS / Go / Rust 输出类型别名；Java 不支持类型别名，输出包装类并在注释中说明。
 
@@ -121,7 +126,10 @@ src/views/tools/<ToolName>/
 | IR | TypeScript | Go | Java | Rust |
 | --- | --- | --- | --- | --- |
 | string | `string` | `string` | `String` | `String` |
-| number | `number` | `float64` | `Double` | `f64` |
+| 整数（≤ 安全整数） | `number` | `int64` | `Long` | `i64` |
+| 小数 / 非整数 | `number` | `float64` | `Double` | `f64` |
+| 超大整数（超安全整数但在 int64 内） | `string` | `int64` | `Long` | `i64` |
+| 超大整数（超出 int64 范围） | `string` | `string` | `String` | `String` |
 | boolean | `boolean` | `bool` | `Boolean` | `bool` |
 | null | 可选 + 注释 | 指针 + `omitempty` | `@Nullable` | `Option<T>` |
 | 缺 key | `key?:` | `*T` + `json:"key,omitempty"` | `@Nullable` | `Option<T>` |
@@ -136,15 +144,24 @@ src/views/tools/<ToolName>/
 - Java：`public class <RootName>`，字段私有 + `@Nullable` 标注，嵌套对象生成为 `public static class`。
 - Rust：字段名转 `snake_case`，用 `#[serde(rename = "<原 key>")]` 保留原始 key；结构体加 `#[derive(Serialize, Deserialize)]`。
 - 嵌套类型命名：`<父类型名><字段名 Pascal>`，输出顺序为被引用类型在前、父类型在后。
+- 根为对象数组（`[{...}, {...}]`）：元素结构体固定命名为 `<RootName>Item`，根类型按语言关联：TS `export type <RootName> = <RootName>Item[]`、Go `type <RootName> []<RootName>Item`、Rust `pub type <RootName> = Vec<<RootName>Item>;`；Java 无类型别名，输出包装类 `public class <RootName> { public List<<RootName>Item> items; }` 并在注释里说明。
+- 名称唯一化：生成器维护类型名注册表，同名时（如 `root.a.b` 与 `root.ab` 归一后撞名）追加数字后缀直到唯一，保证不会输出重复类型声明而编译失败。不做结构等价去重：不同路径下形状相同的对象各自生成独立类型，避免隐性共享带来的歧义。
+- 保留字转义：字段名命中目标语言保留字时加下划线后缀，并用注解保留原始 key：
+  - Rust：`type_` + `#[serde(rename = "type")]`（不用 `r#` 前缀，因为 `self` / `crate` 这类关键字无法靠前缀转义）。
+  - Java：`class_` + `@JsonProperty("class")`。
+  - Go：字段名首字母大写本身就避开了全部 Go 关键字（Go 关键字全为小写），用 `json` tag 保留原名即可。
+  - TypeScript：属性名加引号包裹即可，无需额外转义。
 - 缩进：TS / Java / Rust 用 2 空格，Go 用 tab。
+- Java 输出完整性：头部带上 `import java.util.List;` 与 `import com.fasterxml.jackson.annotation.JsonProperty;`，`@Nullable` 采用 `org.jetbrains.annotations.Nullable` 并在文件头注释里说明可替换为其它注解，保证生成的代码拿过去能编译。
 
 ### 3.4 文件与接口
 
 - `utils/typeInfer.ts`
   - `inferType(value: unknown): TypeNode`（基于 `LosslessJSON.parse` 的结果）
-  - `TypeNode`：`{ kind: 'primitive' | 'array' | 'object' | 'union'; ... }`，`object` 节点持有 `fields: { key, type, optional, note? }[]`
+  - `TypeNode`：`{ kind: 'primitive' | 'array' | 'object' | 'union'; ... }`，`object` 节点持有 `fields: { key, type, optional, note? }[]`；`primitive.name` 取 `string | integer | number | boolean`，`integer` 额外带 `big?: boolean` 标记（区分安全整数与超大整数，供各语言在生成阶段分流）
 - `utils/generators/typescript.ts` / `go.ts` / `java.ts` / `rust.ts`：`generate(root: TypeNode, rootName: string): string`
 - `utils/generators/index.ts`：`generators: Record<Language, (root, rootName) => string>`
+- `utils/generators/naming.ts`：各语言保留字表、`escapeIdentifier(lang, key)`、`uniqueTypeName(registry, name)`
 
 ### 3.5 快照字段
 
@@ -154,7 +171,11 @@ src/views/tools/<ToolName>/
 
 ### 3.6 测试要点
 
-字段全量合并、缺 key → 可选、类型冲突 → 联合、19 位大整数 → 字符串、`null` 混入、空数组、空对象、嵌套对象命名、非法 JSON 报错，以及四种语言的精确输出比对。
+字段全量合并、缺 key → 可选、类型冲突 → 联合、`null` 混入、空数组、空对象、嵌套对象命名、非法 JSON 报错，以及四种语言的精确输出比对。
+
+大整数专项：`typeof value === 'bigint'` 的识别（雪花 ID 不允许落到 `number` 分支）、int64 边界值（`9223372036854775807` 与 `9223372036854775808`）在 Go / Rust / Java 的输出分流、超出 int64 范围回退字符串、TS 恒为字符串。
+
+命名专项：根为对象数组时的 `Item` 命名、同名类型追加后缀、Rust `type_` 与 Java `class_` 保留字转义。
 
 ---
 
@@ -176,7 +197,9 @@ src/views/tools/<ToolName>/
 ### 4.3 编码与解析规则
 
 - 解析语义对齐 `URLSearchParams`：`+` 解码为空格，`%xx` 解码为字符。
-- 生成时使用 `encodeURIComponent` 语义（空格输出为 `%20`）；已经形如 `%xx` 的合法序列保持原样、不再二次编码，以免用户贴入已编码 URL 后被改坏。
+- **不做「正则跳过 `%xx`」这类启发式处理**：值里本来就含 `%20` / `%25` 字面量时会被误判成已编码序列，是典型的编解码反模式。编解码完全由 `autoDecode` 确定。
+- `autoDecode = true`（默认）：模型内保存**完全解码后的纯字符串**，拼装时对 query key/value 统一调 `encodeURIComponent`（空格输出 `%20`）、对 path 按段编码，保证 `parse → build → parse` 幂等。
+- `autoDecode = false`：模型保存用户粘贴的原始文本，拼装时原样回填，全程不做任何编解码。
 - 无值参数 `?flag`（无 `=`）与 `?flag=` 区分保留：参数模型为 `{ key, value, enabled, hasEquals }`。
 - 缺协议时按 `https://` 试解析，并在界面上标注「已按 https 解析」。
 - 非法 URL：报错并保留上一次有效解析结果。
@@ -198,7 +221,9 @@ src/views/tools/<ToolName>/
 
 ### 4.6 测试要点
 
-带端口 / 带 userinfo / IPv6 主机 / 多值重复 key / 无值参数 / 空 query / 缺协议补全 / 非法 URL / 往返一致性（`parse → build → parse`）。
+带端口 / 带 userinfo / IPv6 主机 / 多值重复 key / 无值参数 / 空 query / 缺协议补全 / 非法 URL。
+
+幂等与字面量专项：`parse → build → parse` 两次结果一致；值字面量为 `foo%20bar` 时 `autoDecode=true` 下必须编码成 `foo%2520bar`（而不是被当已编码序列放行）；`autoDecode=false` 下必须原样输出。
 
 ---
 
@@ -215,12 +240,19 @@ src/views/tools/<ToolName>/
 - 选项：是否输出 `0x` / `0b` / `0o` 前缀、十六进制大小写。
 - 允许输入 `0x` / `0b` / `0o` 前缀与 `_` 分隔符；支持负数。
 - 全程 `BigInt` 计算，支持任意长度整数与 64 位以上数值，绝不经过 `Number`。
+- 负数与进制表示：四种进制输出一律用**数学符号表示法**（`-255` / `-0xFF` / `-0b11111111`），不做定宽补码换算（`BigInt` 是任意精度、无硬件位宽，补码语义必须额外指定字长，超出本工具范围）。
 - 非法字符报错，并指出非法字符在输入中的位置。
 
 ### 5.3 命名风格
 
 - 输入一段文本，输出 7 种风格：`camelCase`、`PascalCase`、`snake_case`、`SCREAMING_SNAKE_CASE`、`kebab-case`、`dot.case`、`Title Case`，逐条复制。
-- 分词规则：先按非字母数字分隔符切分，再按 camelCase 边界与连续大写缩写切分（`HTTPServer` → `HTTP` + `Server`）；数字跟随前一个 token（`user2Id` → `user2` + `id`）。
+- 分词规则（依次执行，最后过滤空 token）：
+  1. 按非字母数字字符切分（`_`、`-`、`.`、空格等）。
+  2. 小写 / 数字 → 大写 的边界：`getHTTPResponse` → `get` + `HTTPResponse`。
+  3. 连续大写后接小写时，最后一个大写归入下一段：`HTTPServer` → `HTTP` + `Server`。
+  4. 数字 → 大写 的边界：`XML2JSON` → `XML2` + `JSON`、`user2Id` → `user2` + `Id`。
+  5. 数字不单独成 token，始终并入前一个 token：`IPv4Address` → `IP` + `v4` + `Address`。
+- 分词结果锚定用例（单测直接断言这些）：`HTTPServer` → `http_server`；`getHTTPResponse` → `get_http_response`；`XML2JSON` → `xml2_json`；`IPv4Address` → `ip_v4_address`；`user2Id` → `user2_id`。
 
 ### 5.4 文本行处理
 
@@ -247,7 +279,7 @@ src/views/tools/<ToolName>/
 
 ### 5.7 测试要点
 
-大数（超过 64 位）双向转换、负数、非法字符定位、缩写分词、数字边界、排序与去重组合、前缀后缀、空输入。
+大数（超过 64 位）双向转换、负数输出格式（`-255` / `-0xFF` / `-0b11111111`）、非法字符定位、缩写分词锚定用例（`HTTPServer` / `getHTTPResponse` / `XML2JSON` / `IPv4Address` / `user2Id`）、排序与去重组合、前缀后缀、空输入。
 
 ---
 
@@ -257,7 +289,9 @@ src/views/tools/<ToolName>/
 
 - 权限矩阵为唯一数据源：三行（owner / group / other）× 三列（read / write / execute），外加 setuid / setgid / sticky 三个特殊位开关。
 - 输出三份结果：八进制（常规 3 位；含特殊位时显示 4 位）、符号位（`-rwxr-xr-x`）、命令（`chmod [-R] 755 <path>`，带文件名输入与 `-R` 开关）。
-- 反向输入：数字框（`755` / `4755`）或符号框（`rwxr-xr-x`）输入后立即回填矩阵。
+- 反向输入：数字框（`755` / `4755`）与符号框（`rwxr-xr-x`）是**写入口**，矩阵仍然只是唯一状态源。
+
+**单向事件流（避开双向 watch 抖动）**：只有输入长度落在合法范围（八进制 3 ~ 4 位 / 符号位 9 ~ 10 位）且校验通过，或者失焦 / 回车时，才派发更新矩阵的动作；用户打到一半的中间态（例如刚敲了 `7`）只就地标红提示，绝不回填、绝不碰矩阵状态，避免输入框被重置与监听回环。
 
 ### 6.2 边界
 
@@ -281,6 +315,8 @@ src/views/tools/<ToolName>/
 
 `755` / `644` / `4755` / `1777` 的双向转换、`s`/`S`/`t` 符号解析、非法八进制、9 位与 10 位符号位、命令拼装（含 `-R` 与含空格路径）。
 
+中间态专项：`octalToBits('7')` / `symbolicToBits('rwx')` 只返回错误、不产生合法 bits，供视图层「不合法就不回填」的约定使用。
+
 ---
 
 ## 7. `password-ssh`：强密码生成（批次 A 仅此一半）
@@ -295,7 +331,7 @@ src/views/tools/<ToolName>/
   - 排除易混淆字符（`0 O 1 l I |`），默认开启。
   - 生成数量（1 ~ 20，默认 1）。
   - 生成按钮 → 结果列表（等宽显示、逐条复制、一键重新生成）。
-  - 强度读数：熵值（bits）与分级（< 60 弱 / 60 ~ 90 中 / > 90 强）。
+  - 强度读数：熵值（bits）与分级（< 60 弱 / 60 ~ 90 中 / > 90 强），熵值必须按**排除易混淆字符后的实际有效字符集**计算，不能拿全量字符集大小估算。
 
 ### 7.2 生成规则
 
@@ -308,14 +344,16 @@ src/views/tools/<ToolName>/
 
 - 开关「持久化生成结果」**默认关闭**。
 - 生成参数（长度 / 字符集 / 排除选项 / 数量）**始终**持久化。
-- 开关打开时生成结果一并写入快照；关闭开关的瞬间同时清空快照中已保存的结果。
+- 开关打开时生成结果一并写入快照。
+- 关闭开关的瞬间**绕过防抖立即写库**清空 `results`（普通文本输入走 250ms 防抖，这个开关不走），否则用户在防抖窗口内切走 Tab 或退出应用会把明文密码留在 SQLite 里。
+- 关闭状态下的保存函数一律不携带 `results` 字段，避免后续任意一次普通保存把旧结果写回去。
 
 ### 7.4 文件与接口
 
 - `utils/password.ts`
   - `buildCharset(options)`：返回字符集字符串与错误信息
   - `generatePasswords(options, rng?)`：返回 `{ passwords, error? }`
-  - `estimateEntropy(options)`：返回 `length * log2(charsetSize)` 与分级
+  - `estimateEntropy(options)`：返回 `length * log2(实际有效字符集大小)` 与分级（实际有效字符集 = 已启用类别去除易混淆字符后的并集）
 
 ### 7.5 快照字段
 
@@ -334,6 +372,8 @@ src/views/tools/<ToolName>/
 ### 7.6 测试要点
 
 各字符集开关组合、排除易混淆后不出现禁用字符、每类别至少一个字符、长度不足报错、数量与不重复性、熵值分级边界、注入 RNG 的确定性输出。
+
+熵值专项：同一 `length` 下开启与关闭「排除易混淆字符」的熵值必须不同，且前者较小（验证确实用了实际有效字符集）。
 
 ---
 
