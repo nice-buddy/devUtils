@@ -28,6 +28,7 @@ const JsonToTypes = defineAsyncComponent(() => import('@/views/tools/JsonToTypes
 const UrlParser = defineAsyncComponent(() => import('@/views/tools/UrlParser/UrlParser.vue'))
 const RadixCase = defineAsyncComponent(() => import('@/views/tools/RadixCase/RadixCase.vue'))
 const ChmodCalc = defineAsyncComponent(() => import('@/views/tools/ChmodCalc/ChmodCalc.vue'))
+const YamlPropJson = defineAsyncComponent(() => import('@/views/tools/YamlPropJson/YamlPropJson.vue'))
 const PasswordSsh = defineAsyncComponent(() => import('@/views/tools/PasswordSsh/PasswordSsh.vue'))
 
 const tabStore = useTabStore()
@@ -71,6 +72,9 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'password-ssh' || toolId === 'password_ssh') {
     return PasswordSsh
+  }
+  if (toolId === 'yaml-prop-json' || toolId === 'yaml_prop_json') {
+    return YamlPropJson
   }
   return ToolPlaceholder
 }
