@@ -3,3 +3,4 @@ pub mod http;
 pub mod hash;
 pub mod cron;
 pub mod file;
+pub mod x509;

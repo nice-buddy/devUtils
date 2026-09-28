@@ -41,6 +41,8 @@ const JwtTool = defineAsyncComponent(() => import('@/views/tools/Jwt/Jwt.vue'))
 const WebsocketTool = defineAsyncComponent(() => import('@/views/tools/Websocket/Websocket.vue'))
 const MarkdownTool = defineAsyncComponent(() => import('@/views/tools/Markdown/Markdown.vue'))
 const ImageBase64Tool = defineAsyncComponent(() => import('@/views/tools/ImageBase64/ImageBase64.vue'))
+const X509Tool = defineAsyncComponent(() => import('@/views/tools/X509/X509.vue'))
+const QrcodeTool = defineAsyncComponent(() => import('@/views/tools/Qrcode/Qrcode.vue'))
 
 const tabStore = useTabStore()
 const themeStore = useThemeStore()
@@ -119,6 +121,12 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'image-base64' || toolId === 'image_base64') {
     return ImageBase64Tool
+  }
+  if (toolId === 'x509') {
+    return X509Tool
+  }
+  if (toolId === 'qrcode') {
+    return QrcodeTool
   }
   return ToolPlaceholder
 }

@@ -215,6 +215,22 @@ export const TOOLS: ToolDefinition[] = [
     category: 'dev',
     icon: 'Image',
     keywords: ['image', 'base64', 'dataurl', 'svg', 'png', 'jpeg', 'compress']
+  },
+  {
+    id: 'x509',
+    name: 'X.509 证书解析',
+    description: 'PEM/DER/Base64 证书解析，主体、有效期、SAN、扩展与 SHA-1/SHA-256 指纹',
+    category: 'crypto',
+    icon: 'ShieldCheck',
+    keywords: ['x509', 'certificate', 'pem', 'der', 'ssl', 'tls', 'fingerprint', '证书']
+  },
+  {
+    id: 'qrcode',
+    name: '二维码生成与解码',
+    description: '文本生成二维码（纠错等级/尺寸/颜色）与剪贴板图片解码',
+    category: 'dev',
+    icon: 'QrCode',
+    keywords: ['qrcode', 'qr', 'barcode', 'encode', 'decode', '二维码']
   }
 ]
 
