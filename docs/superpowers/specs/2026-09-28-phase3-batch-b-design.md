@@ -167,7 +167,9 @@ describeClaims(payload: Record<string, any>, now: number): { key: string; value:
   ```
 
 - 风险说明（写进代码注释）：放开 `connect-src` 后，若将来出现被注入的脚本，理论上可经 WebSocket 外发数据。当前 `script-src 'self'` 已阻断内联与远程脚本，应用自身脚本是唯一来源，风险可接受；这是「零新增依赖 + 复用原生能力」的代价，已在 spec 中显式记录。
-- 混合内容风险：页面源是 `tauri://localhost`，`ws://`（非 TLS）是否被混合内容策略拦截需在实现阶段用本地 echo 服务实测；若被拦，界面提示改用 `wss://`，并把结论写回 spec。
+- **实现阶段实测结论（2026-09-28）**：
+  - 用 `npm run build` 的产物 + 一个带真实 CSP 头的静态服务 + 本地 echo 服务做了对照实验：**旧 CSP 下连接被拦（日志只有「连接出错」）；新 CSP 下连接成功（日志出现「已连接」）**。也就是说这条 `connect-src` 既是必要条件也是充分条件。
+  - 尚未覆盖的残留风险：上述实验的页面源是 `http://127.0.0.1`（本身是 secure context），**没有**直接复现 `tauri://localhost` 自定义协议下 `ws://` 是否触发混合内容拦截——那需要在打包后的应用里验证（`npm run tauri build` 后手动连接一次）。若届时 `ws://` 被拦，按原计划在界面提示改用 `wss://`。
 
 ### 4.4 连接生命周期（定稿）
 
