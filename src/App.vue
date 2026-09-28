@@ -39,6 +39,8 @@ const ColorConverter = defineAsyncComponent(() => import('@/views/tools/ColorCon
 const TabularConvert = defineAsyncComponent(() => import('@/views/tools/TabularConvert/TabularConvert.vue'))
 const JwtTool = defineAsyncComponent(() => import('@/views/tools/Jwt/Jwt.vue'))
 const WebsocketTool = defineAsyncComponent(() => import('@/views/tools/Websocket/Websocket.vue'))
+const MarkdownTool = defineAsyncComponent(() => import('@/views/tools/Markdown/Markdown.vue'))
+const ImageBase64Tool = defineAsyncComponent(() => import('@/views/tools/ImageBase64/ImageBase64.vue'))
 
 const tabStore = useTabStore()
 const themeStore = useThemeStore()
@@ -111,6 +113,12 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'websocket') {
     return WebsocketTool
+  }
+  if (toolId === 'markdown') {
+    return MarkdownTool
+  }
+  if (toolId === 'image-base64' || toolId === 'image_base64') {
+    return ImageBase64Tool
   }
   return ToolPlaceholder
 }

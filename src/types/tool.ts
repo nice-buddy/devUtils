@@ -199,6 +199,22 @@ export const TOOLS: ToolDefinition[] = [
     category: 'format',
     icon: 'Table',
     keywords: ['excel', 'csv', 'tsv', 'json', 'sql', 'insert', 'table']
+  },
+  {
+    id: 'markdown',
+    name: 'Markdown / HTML 预览',
+    description: 'GFM 实时渲染、双向同步滚动、代码块高亮与 HTML 导出',
+    category: 'format',
+    icon: 'FileText',
+    keywords: ['markdown', 'md', 'gfm', 'preview', 'html', 'render']
+  },
+  {
+    id: 'image-base64',
+    name: '图片与 Base64 / SVG',
+    description: '图片 ↔ Base64/DataURL、剪贴板粘图、等比缩放重编码与 SVG 压缩',
+    category: 'dev',
+    icon: 'Image',
+    keywords: ['image', 'base64', 'dataurl', 'svg', 'png', 'jpeg', 'compress']
   }
 ]
 

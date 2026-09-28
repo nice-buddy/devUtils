@@ -36,6 +36,7 @@ pub fn run() {
             commands::hash::cancel_file_hash,
             commands::hash::compute_text_hash,
             commands::cron::predict_cron_runs,
+            commands::file::save_binary_file,
         ])
         .run(tauri::generate_context!())
         .expect("运行 DevUtils 发生异常");

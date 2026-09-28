@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.1",
+    "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.12.4",
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.36.4",
@@ -20,7 +21,10 @@
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-window-state": "^2.0.0",
     "codemirror": "^6.0.1",
+    "dompurify": "^3.4.16",
+    "highlight.js": "^11.12.0",
     "json-bigint": "^1.0.0",
+    "marked": "^18.0.14",
     "naive-ui": "^2.41.0",
     "nanoid": "^5.0.9",
     "pinia": "^2.3.1",
