@@ -1583,7 +1583,7 @@ export function randomName(rng: Rng = defaultRng): string {
 export function randomPhone(rng: Rng = defaultRng): string {
   const second = 3 + randomInt(rng, 7)
   let tail = ''
-  for (let i = 0; i < 8; i += 1) tail += randomInt(rng, 10)
+  for (let i = 0; i < 9; i += 1) tail += randomInt(rng, 10)
   return `1${second}${tail}`
 }
 
