@@ -1,0 +1,139 @@
+name: Release
+
+# 打 tag（v1.0.0）后自动构建并发布正式 Release；
+# 也可以在 Actions 页面手动触发，手动触发时必须填写版本号。
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '要发布的版本号（可带或不带 v 前缀，如 1.0.0）；手动触发时必填'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (${{ matrix.label }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            label: windows-x64
+            target: ''
+            args: ''
+          - platform: macos-latest
+            label: macos-arm64
+            target: aarch64-apple-darwin
+            args: '--target aarch64-apple-darwin'
+          - platform: macos-latest
+            label: macos-x64
+            target: x86_64-apple-darwin
+            args: '--target x86_64-apple-darwin'
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      # tag 名称（如 v1.0.0）去掉前缀 v，与 CHANGELOG.md 中的二级标题一一对应
+      - name: Resolve version from tag
+        id: version
+        shell: bash
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            if [[ -z "${INPUT_VERSION}" ]]; then
+              echo "::error::手动触发必须填写 version，例如 1.0.0"
+              exit 1
+            fi
+            TAG="v${INPUT_VERSION#v}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "number=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      # 版本号以 tag 为唯一来源，构建前写回 package.json 与 tauri.conf.json，
+      # 这样发布时不需要再手工同步版本号。
+      - name: Sync version into package.json and tauri.conf.json
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.number }}
+        run: |
+          node -e "
+          const fs = require('fs');
+          const version = process.env.VERSION;
+          for (const file of ['package.json', 'src-tauri/tauri.conf.json']) {
+            const json = JSON.parse(fs.readFileSync(file, 'utf8'));
+            json.version = version;
+            fs.writeFileSync(file, JSON.stringify(json, null, 2) + '\n');
+          }
+          console.log('version ->', version);
+          "
+
+      # 从 CHANGELOG.md 提取当前版本的说明；找不到对应章节时回退到默认文案
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.number }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          NOTES=$(awk -v ver="## v${VERSION}" '
+            $0 == ver { in_section = 1; next }
+            in_section && /^## v/ { exit }
+            in_section { print }
+          ' CHANGELOG.md)
+          if [ -z "$(echo "$NOTES" | tr -d '[:space:]')" ]; then
+            NOTES="DevUtils ${TAG} 发布版本"
+          fi
+          {
+            echo "body<<EOF"
+            echo "$NOTES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ steps.version.outputs.tag }}
+          releaseName: 'DevUtils ${{ steps.version.outputs.tag }}'
+          releaseBody: ${{ steps.notes.outputs.body }}
+          releaseDraft: false
+          prerelease: false
+          # 应用未接入 Tauri updater，不生成 latest.json 之类的更新清单
+          uploadUpdaterJson: false
+          args: ${{ matrix.args }}
