@@ -33,6 +33,10 @@ const YamlValidator = defineAsyncComponent(() => import('@/views/tools/YamlValid
 const TomlValidator = defineAsyncComponent(() => import('@/views/tools/TomlValidator/TomlValidator.vue'))
 const SqlFormatter = defineAsyncComponent(() => import('@/views/tools/SqlFormatter/SqlFormatter.vue'))
 const PasswordSsh = defineAsyncComponent(() => import('@/views/tools/PasswordSsh/PasswordSsh.vue'))
+const RegexTester = defineAsyncComponent(() => import('@/views/tools/Regex/Regex.vue'))
+const MockData = defineAsyncComponent(() => import('@/views/tools/MockData/MockData.vue'))
+const ColorConverter = defineAsyncComponent(() => import('@/views/tools/ColorConverter/ColorConverter.vue'))
+const TabularConvert = defineAsyncComponent(() => import('@/views/tools/TabularConvert/TabularConvert.vue'))
 
 const tabStore = useTabStore()
 const themeStore = useThemeStore()
@@ -87,6 +91,18 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'sql-formatter' || toolId === 'sql_formatter') {
     return SqlFormatter
+  }
+  if (toolId === 'regex') {
+    return RegexTester
+  }
+  if (toolId === 'mock-data' || toolId === 'mock_data') {
+    return MockData
+  }
+  if (toolId === 'color-converter' || toolId === 'color_converter') {
+    return ColorConverter
+  }
+  if (toolId === 'tabular-convert' || toolId === 'tabular_convert') {
+    return TabularConvert
   }
   return ToolPlaceholder
 }

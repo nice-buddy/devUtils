@@ -175,6 +175,30 @@ export const TOOLS: ToolDefinition[] = [
     category: 'dev',
     icon: 'Search',
     keywords: ['regex', 'regexp', 'pattern', 'test', 'replace']
+  },
+  {
+    id: 'mock-data',
+    name: 'UUID / 雪花 ID / Mock 数据',
+    description: 'UUID v1/v4/v7、NanoID、雪花 ID 与中文测试 Mock 数据批量生成',
+    category: 'dev',
+    icon: 'Sparkles',
+    keywords: ['uuid', 'snowflake', 'nanoid', 'mock', 'faker', 'random', 'id']
+  },
+  {
+    id: 'color-converter',
+    name: '颜色转换与拾取',
+    description: 'HEX / RGB / HSL 互转与取色器',
+    category: 'dev',
+    icon: 'Palette',
+    keywords: ['color', 'hex', 'rgb', 'hsl', 'picker', 'eyedropper']
+  },
+  {
+    id: 'tabular-convert',
+    name: 'Excel / CSV 转 JSON 与 SQL',
+    description: '粘贴或导入 TSV/CSV，推导类型并生成 JSON 数组或多方言批量 INSERT',
+    category: 'format',
+    icon: 'Table',
+    keywords: ['excel', 'csv', 'tsv', 'json', 'sql', 'insert', 'table']
   }
 ]
 
