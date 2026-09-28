@@ -40,6 +40,8 @@ pub fn run() {
             commands::file::save_binary_file,
             commands::x509::parse_certificate,
             commands::metrics::get_process_metrics,
+            commands::github::fetch_latest_release,
+            commands::opener::open_external_url,
         ])
         .run(tauri::generate_context!())
         .expect("运行 DevUtils 发生异常");

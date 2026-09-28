@@ -240,9 +240,11 @@ onMounted(async () => {
                 class="h-full w-full flex flex-col items-center justify-center p-8 overflow-y-auto"
               >
                 <div class="max-w-2xl w-full flex flex-col items-center text-center">
-                  <div class="w-16 h-16 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-3xl font-black shadow-lg shadow-indigo-500/20 mb-4">
-                    D
-                  </div>
+                  <img
+                    src="/app-icon.svg"
+                    alt="DevUtils"
+                    class="w-16 h-16 rounded-2xl shadow-lg shadow-indigo-500/20 mb-4"
+                  />
                   <h1 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 mb-2">
                     DevUtils 工作台
                   </h1>

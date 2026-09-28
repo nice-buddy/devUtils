@@ -6,6 +6,8 @@ import { useToolStore } from '@/stores/toolStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCommandPalette } from '@/composables/useCommandPalette'
 import ResourceStatus from './ResourceStatus.vue'
+import AboutDialog from '@/components/common/AboutDialog.vue'
+import { APP_VERSION } from '@/utils/appInfo'
 import { isMacOS, shortcutLabel } from '@/utils/platform'
 
 const tabStore = useTabStore()
@@ -14,6 +16,8 @@ const themeStore = useThemeStore()
 const { open: openCommandPalette } = useCommandPalette()
 
 const isCollapsed = ref(false)
+const showAbout = ref(false)
+const appVersionLabel = `v${APP_VERSION}`
 const selectedCategory = ref<ToolCategory | 'all' | 'favorites'>('all')
 const filterQuery = ref('')
 
@@ -72,15 +76,18 @@ function toggleFavorite(toolId: string, event: MouseEvent) {
     <!-- App Brand & Title -->
     <div data-tauri-drag-region="deep" class="h-12 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-800">
       <template v-if="!isCollapsed">
-        <div class="flex items-center gap-2 min-w-0">
-          <div class="w-7 h-7 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shadow-sm">
-            D
-          </div>
+        <button
+          class="flex items-center gap-2 min-w-0 -ml-1 px-1 py-1 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-900 transition-colors"
+          title="关于 DevUtils"
+          @mousedown.stop
+          @click="showAbout = true"
+        >
+          <img src="/app-icon.svg" alt="DevUtils" class="w-7 h-7 rounded-lg shadow-sm shrink-0" />
           <div class="min-w-0 flex items-baseline gap-1.5">
             <span class="font-bold text-sm tracking-tight text-slate-900 dark:text-slate-100">DevUtils</span>
-            <span class="text-[10px] text-indigo-500 dark:text-indigo-400 font-mono">v0.1</span>
+            <span class="text-[10px] text-indigo-500 dark:text-indigo-400 font-mono">{{ appVersionLabel }}</span>
           </div>
-        </div>
+        </button>
 
         <button
           @click="isCollapsed = true"
@@ -273,5 +280,7 @@ function toggleFavorite(toolId: string, event: MouseEvent) {
       </button>
       <ResourceStatus :collapsed="isCollapsed" />
     </div>
+
+    <AboutDialog v-model:show="showAbout" />
   </aside>
 </template>

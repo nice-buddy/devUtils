@@ -5,3 +5,5 @@ pub mod cron;
 pub mod file;
 pub mod x509;
 pub mod metrics;
+pub mod github;
+pub mod opener;
