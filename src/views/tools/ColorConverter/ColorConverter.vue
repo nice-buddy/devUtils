@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { NAlert, NButton, NInput, NInputNumber, NSlider, useMessage } from 'naive-ui'
 import { useTabStore } from '@/stores/tabStore'
 import { hslToRgb, parseColor, rgbToHsl, toHex, toHslString, toRgbString, type Rgba } from './utils/colorConvert'
@@ -105,6 +105,11 @@ watch(input, () => {
 })
 
 watch(recent, scheduleSnapshot, { deep: true })
+
+onBeforeUnmount(() => {
+  if (snapshotTimer) clearTimeout(snapshotTimer)
+  saveSnapshot()
+})
 </script>
 
 <template>

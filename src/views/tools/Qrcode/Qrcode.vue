@@ -124,8 +124,9 @@ async function exportPng() {
 async function loadImageFile(file: File) {
   decodeError.value = ''
   decodeResult.value = null
+  let bitmap: ImageBitmap | null = null
   try {
-    const bitmap = await createImageBitmap(file)
+    bitmap = await createImageBitmap(file)
     const scale = Math.min(1, MAX_DECODE_EDGE / Math.max(bitmap.width, bitmap.height))
     const width = Math.max(1, Math.round(bitmap.width * scale))
     const height = Math.max(1, Math.round(bitmap.height * scale))
@@ -148,6 +149,9 @@ async function loadImageFile(file: File) {
     decodeResult.value = result
   } catch {
     decodeError.value = '读取图片失败'
+  } finally {
+    // ImageBitmap 持有原生位图内存，显式释放，避免大图解码后长期占用
+    bitmap?.close()
   }
 }
 

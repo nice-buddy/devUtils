@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { NAlert, NButton, NCheckbox, NCheckboxGroup, NInput, NInputNumber, NRadioButton, NRadioGroup, NSwitch, useMessage } from 'naive-ui'
 import { customAlphabet } from 'nanoid'
 import { useTabStore } from '@/stores/tabStore'
@@ -141,6 +141,11 @@ function copyOne(item: string) {
 }
 
 watch([type, count, nanoidLength, nanoidAlphabet, epoch, machineId, splitMachineId, fields, outputFormat, uppercase], scheduleSnapshot, { deep: true })
+
+onBeforeUnmount(() => {
+  if (snapshotTimer) clearTimeout(snapshotTimer)
+  saveSnapshot()
+})
 </script>
 
 <template>

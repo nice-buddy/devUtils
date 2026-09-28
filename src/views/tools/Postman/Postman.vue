@@ -80,6 +80,8 @@ const response = ref<PostmanResponseModel | null>(
   cloneWithoutTempFile(props.initialSnapshot?.response)
 )
 const loading = ref(false)
+// 标签页关闭后置为 true：在途请求的响应不再写回已销毁的组件，并清理落盘的临时响应文件
+let disposed = false
 const errorMessage = ref<string | null>(null)
 
 // History drawer state
@@ -351,6 +353,13 @@ async function handleSend() {
 
     const result = await invoke<HttpIpcResponse>('http_execute', { req: payload })
 
+    if (disposed) {
+      if (result.tempFilePath) {
+        invoke('http_clean_temp_file', { filePath: result.tempFilePath }).catch(() => {})
+      }
+      return
+    }
+
     response.value = toPostmanResponse(result)
 
     saveSnapshot()
@@ -525,7 +534,13 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  disposed = true
   window.removeEventListener('keydown', handleGlobalKeydown)
+  // 大响应会被后端落到临时文件，关标签时及时回收，不必等到下次启动才清理
+  const tempFilePath = response.value?.tempFilePath
+  if (tempFilePath) {
+    invoke('http_clean_temp_file', { filePath: tempFilePath }).catch(() => {})
+  }
 })
 </script>
 
