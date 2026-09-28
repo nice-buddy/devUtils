@@ -1,0 +1,48 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="72" y1="72" x2="952" y2="952" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#6366F1" />
+      <stop offset="1" stop-color="#4338CA" />
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="6%" r="78%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.28" />
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="body" x1="512" y1="336" x2="512" y2="736" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" />
+      <stop offset="1" stop-color="#E0E7FF" />
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(72 72) scale(0.859375)">
+    <rect width="1024" height="1024" rx="230" fill="url(#bg)" />
+    <rect width="1024" height="1024" rx="230" fill="url(#glow)" />
+
+    <!-- 工具箱提手：先画，随后被箱体压住下半段 -->
+    <path
+      d="M400 336V296C400 262 428 234 462 234H562C596 234 624 262 624 296V336"
+      stroke="#FFFFFF"
+      stroke-width="48"
+      stroke-linecap="round"
+    />
+
+    <!-- 箱体 -->
+    <rect x="264" y="336" width="496" height="400" rx="56" fill="url(#body)" />
+
+    <!-- 代码符号 -->
+    <path
+      d="M456 464L376 536L456 608"
+      stroke="#4338CA"
+      stroke-width="44"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M568 464L648 536L568 608"
+      stroke="#4338CA"
+      stroke-width="44"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </g>
+</svg>
