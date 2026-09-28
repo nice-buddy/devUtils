@@ -30,7 +30,7 @@
 
 - 不做 JWT、WebSocket、Markdown、图片 / Base64、X.509、二维码（归后续批次）。
 - 不新增任何 npm 依赖、不改动 Rust 端（`src-tauri/`）、不改动数据库 schema。
-- 不做拖放导入（Tauri `dragDropEnabled` 默认为 `true` 时会拦截 webview 原生拖放事件，收益低、代价高，见 §6.2）。
+- 不做拖放导入（Tauri `dragDropEnabled` 默认为 `true`，官方说明「Windows 上必须关掉它才能用 HTML5 拖放」，跨平台行为不一致，收益低、代价高，见 §6.2）。
 - 不做「颜色对比度 / 无障碍检查」等总设计未要求的扩展能力。
 
 ---
@@ -332,7 +332,7 @@ toHslString(c: Rgba): string
 - 右：输出预览（只读 `<pre>` + 复制按钮，沿用 `SqlFormatter.vue` 的样式）。
 - 状态条：解析出的行列数、跳过的空行数、告警（列数不一致的行号）。
 
-**文件导入只用隐藏 `<input type="file" accept=".csv,.tsv,.txt">` + 按钮，不做拖放**：`src-tauri/tauri.conf.json` 未设置 `dragDropEnabled`，Tauri 默认 `true` 会拦截 webview 原生拖放事件；要支持拖放得改 Tauri 配置并接原生事件拿路径，收益与成本不成比例。
+**文件导入只用隐藏 `<input type="file" accept=".csv,.tsv,.txt">` + 按钮，不做拖放**：`src-tauri/tauri.conf.json` 未设置 `dragDropEnabled`，而 `tauri-utils` 的默认值是 `true`（源码注释：`Disabling it is required to use HTML5 drag and drop on the frontend on Windows`）——即 Windows 上原生 HTML5 拖放直接被拦，macOS/Linux 行为又不一致；要跨平台支持拖放得改 Tauri 配置再自己接原生事件拿路径，收益与成本不成比例。`<input type="file">` 在三个平台的 webview 里都能拿到 `File` 对象（`File.text()` 可直接读文本），且不需要改 Tauri 配置。
 
 ### 6.3 解析规则（定稿）
 
