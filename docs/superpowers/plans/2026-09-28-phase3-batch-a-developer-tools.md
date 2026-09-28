@@ -109,7 +109,9 @@ defineProps<{ tabId: string; initialSnapshot?: Record<string, any> }>()
 - [ ] **Step 5: 验证构建**
 
 Run: `npm run build`
-Expected: `vue-tsc --noEmit` 无报错，`dist/assets/` 下出现 `Regex-*.js`、`MockData-*.js`、`ColorConverter-*.js`、`TabularConvert-*.js`。
+Expected: `vue-tsc --noEmit` 无报错，构建通过。
+
+> 执行时发现：占位组件编译后只有几百字节，Rollup 会把小于 `experimentalMinChunkSize` 的异步 chunk 合并进主 chunk，所以本步骤看不到 `Regex-*.js` 等产物。真实 chunk 会在 Task 3 / 5 / 7 / 9 替换实现后出现，Task 10 再断言产物存在。
 
 - [ ] **Step 6: 提交**
 
