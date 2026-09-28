@@ -37,6 +37,8 @@ const RegexTester = defineAsyncComponent(() => import('@/views/tools/Regex/Regex
 const MockData = defineAsyncComponent(() => import('@/views/tools/MockData/MockData.vue'))
 const ColorConverter = defineAsyncComponent(() => import('@/views/tools/ColorConverter/ColorConverter.vue'))
 const TabularConvert = defineAsyncComponent(() => import('@/views/tools/TabularConvert/TabularConvert.vue'))
+const JwtTool = defineAsyncComponent(() => import('@/views/tools/Jwt/Jwt.vue'))
+const WebsocketTool = defineAsyncComponent(() => import('@/views/tools/Websocket/Websocket.vue'))
 
 const tabStore = useTabStore()
 const themeStore = useThemeStore()
@@ -103,6 +105,12 @@ function resolveBaseComponent(toolId: string) {
   }
   if (toolId === 'tabular-convert' || toolId === 'tabular_convert') {
     return TabularConvert
+  }
+  if (toolId === 'jwt') {
+    return JwtTool
+  }
+  if (toolId === 'websocket') {
+    return WebsocketTool
   }
   return ToolPlaceholder
 }
