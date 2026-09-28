@@ -5,6 +5,7 @@ import { useTabStore } from '@/stores/tabStore'
 import { useToolStore } from '@/stores/toolStore'
 import { useThemeStore } from '@/stores/themeStore'
 import { useCommandPalette } from '@/composables/useCommandPalette'
+import ResourceStatus from './ResourceStatus.vue'
 import { isMacOS, shortcutLabel } from '@/utils/platform'
 
 const tabStore = useTabStore()
@@ -255,11 +256,11 @@ function toggleFavorite(toolId: string, event: MouseEvent) {
       </div>
     </div>
 
-    <!-- Bottom Actions: Theme Toggle -->
+    <!-- Bottom Actions: Theme Toggle + Resource Status -->
     <div
       :class="[
-        'p-2 border-t border-slate-200 dark:border-slate-800 flex items-center text-xs text-slate-500',
-        isCollapsed ? 'justify-center' : 'justify-between'
+        'p-2 border-t border-slate-200 dark:border-slate-800 flex text-xs text-slate-500',
+        isCollapsed ? 'flex-col items-center gap-1' : 'items-center justify-between'
       ]"
     >
       <button
@@ -270,6 +271,7 @@ function toggleFavorite(toolId: string, event: MouseEvent) {
         <span>{{ themeStore.isDark ? '🌙' : '☀️' }}</span>
         <span v-if="!isCollapsed">{{ themeStore.isDark ? '暗色' : '明亮' }}</span>
       </button>
+      <ResourceStatus :collapsed="isCollapsed" />
     </div>
   </aside>
 </template>

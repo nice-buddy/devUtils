@@ -20,6 +20,7 @@ pub fn run() {
             })?;
             app.manage(db_state);
             app.manage(commands::hash::HashCancelManager::new());
+            app.manage(commands::metrics::MetricsState::new());
 
             // 启动时清理残留的临时大响应缓存文件
             commands::http::clean_all_temp_response_files();
@@ -38,6 +39,7 @@ pub fn run() {
             commands::cron::predict_cron_runs,
             commands::file::save_binary_file,
             commands::x509::parse_certificate,
+            commands::metrics::get_process_metrics,
         ])
         .run(tauri::generate_context!())
         .expect("运行 DevUtils 发生异常");
