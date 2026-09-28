@@ -183,13 +183,22 @@ describe('color-converter 颜色转换', () => {
     expect(parseColor('chartreuse').error).toBeTruthy()
   })
 
-  it('往返：HEX -> RGB -> HSL -> RGB -> HEX 保持一致', () => {
-    for (const hex of ['#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff', '#123456']) {
+  it('往返：锚定色 HEX -> RGB -> HSL -> RGB -> HEX 完全一致', () => {
+    for (const hex of ['#000000', '#ffffff', '#ff0000', '#00ff00', '#0000ff']) {
       const c = ok(hex)
       const hsl = rgbToHsl(c)
       const back = hslToRgb(hsl.h, hsl.s, hsl.l, c.a)
       expect(toHex(back)).toBe(hex)
     }
+  })
+
+  it('整数化 HSL 的往返误差限制在每通道 ±3 以内', () => {
+    const c = ok('#123456')
+    const hsl = rgbToHsl(c)
+    const back = hslToRgb(hsl.h, hsl.s, hsl.l, c.a)
+    expect(Math.abs(back.r - c.r)).toBeLessThanOrEqual(3)
+    expect(Math.abs(back.g - c.g)).toBeLessThanOrEqual(3)
+    expect(Math.abs(back.b - c.b)).toBeLessThanOrEqual(3)
   })
 
   it('格式化：alpha 为 1 时省略 alpha 通道', () => {
