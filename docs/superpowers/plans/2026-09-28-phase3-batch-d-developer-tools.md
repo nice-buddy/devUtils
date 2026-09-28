@@ -1583,37 +1583,51 @@ Expected：clippy 无 warning；全部测试通过（`test_http` 需在沙箱外
 BASE=$(git log --format=%H --grep="docs(spec): 新增第三阶段批次 D" -1)
 git diff --stat "$BASE"..HEAD -- package.json src-tauri/Cargo.toml
 git diff "$BASE"..HEAD -- src-tauri/src/lib.rs src-tauri/src/commands/mod.rs
-cargo tree --manifest-path src-tauri/Cargo.toml | rg "ring|aws-lc" || echo "no ring/aws-lc (expected)"
+cargo tree --manifest-path src-tauri/Cargo.toml -p x509-parser | rg "ring|aws-lc" || echo "x509-parser 未引入 ring/aws-lc（预期）"
+cargo tree --manifest-path src-tauri/Cargo.toml -i ring | head -6
 ```
 
-Expected：`package.json` 只新增 `qrcode`、`jsqr`、`@types/qrcode`；`Cargo.toml` 只新增 `x509-parser`；`lib.rs` 与 `commands/mod.rs` 各只有一行新增；**不得出现 `ring` / `aws-lc-rs`**（用 `cargo tree --manifest-path src-tauri/Cargo.toml | rg "ring|aws-lc"` 应为空）。
+Expected：`package.json` 只新增 `qrcode`、`jsqr`、`@types/qrcode`；`Cargo.toml` 只新增 `x509-parser`；`lib.rs` 与 `commands/mod.rs` 各只有一行新增。**`x509-parser` 子树里不得出现 `ring` / `aws-lc-rs`**；整棵依赖树里若能看到 `ring`，必须能追到批次 D 之前就已存在的 `reqwest → rustls`，而不是 `x509-parser`。
 
 - [ ] **Step 4: 浏览器验收（本地静态服务 + 无头 Chrome + 真实 CSP）**
 
 复用批次 C 的验收套路（`dist` 产物 + 带真实 CSP 头的静态服务 + 无头 Chrome 经 CDP 驱动），必须断言：
 
-1. 侧边栏点击 `X.509 证书解析` 打开真实视图，「填入示例证书」+「解析」后概要区出现 `devutils.test` 与「有效」徽标。
-2. 同一张证书的 PEM 与 DER hex 两种输入解析出的概要一致。
-3. 乱码输入后页面出现错误 `NAlert`，且不白屏（`document.body.innerText` 仍包含工具标题）。
+1. 侧边栏点击 `X.509 证书解析` 打开真实视图（标题、输入框、三个按钮都在）。静态服务里没有 Tauri IPC，点「解析」会走错误分支：断言出现错误 `NAlert` 且页面不白屏（`document.body.innerText` 仍包含工具标题）。
+2. 用 `Page.addScriptToEvaluateOnNewDocument` 注入假的 `window.__TAURI_INTERNALS__.invoke`，让 `parse_certificate` 返回契约里的 `CertificateInfo`（字段名严格按 §3.4 的 camelCase）；断言概要区渲染出 `devutils.test`、「有效」徽标，SAN 与指纹分组非空。这一步验证前端渲染契约。
+3. 真实证书解析（PEM / DER hex / Base64 三形态一致）不在静态服务里做，放到 Step 5 的 Tauri 真机里验证。
 4. 切换到 `二维码生成与解码`，内容填 `DEVUTILS-1`、纠错 M、尺寸 256，canvas 生成成功（`canvas.width === 256`）。
 5. 生成模式：内容填 `DEVUTILS-1`、纠错 M、尺寸 256，保存路径填 `/tmp/devutils-qrcode-roundtrip.png`，点「导出 PNG」；随后用 CDP `DOM.setFileInputFiles` 把这个 PNG 塞进解码模式隐藏的 `<input type="file">`，断言右栏解出的文本等于 `DEVUTILS-1` 且版本为 1（同一张图既验证导出又验证解码闭环）。
 6. 非二维码图片（纯白 PNG）走解码流程后出现「未识别到二维码」提示。
 7. 两个工具关闭 Tab 再打开，输入与视图选项还原；解析结果与二维码图片不还原（符合设计）。
 8. 控制台无未捕获异常。
 
-- [ ] **Step 5: 保存命令的真机验证**
+- [ ] **Step 5: 真机验证（Tauri 调试包）**
 
 ```bash
 npm run tauri -- build --debug
 ```
 
-启动 `src-tauri/target/debug/bundle/macos/DevUtils.app`，在二维码工具里把保存路径填成 `/tmp/devutils-qrcode-test.png`，点「导出 PNG」，然后：
+启动 `src-tauri/target/debug/bundle/macos/DevUtils.app`，用系统级 UI 自动化完成下面两步：
+
+1. **X.509 真机解析**：打开 `X.509 证书解析`，点「填入示例证书」→ 断言概要区出现 `Subject CN：devutils.test`、`有效` 徽标、`RSA · 2048 bit`、`DNS:devutils.test`，且 SHA-1 / SHA-256 指纹与 `openssl x509 -fingerprint` 完全一致。这一步同时验证 IPC 参数名（`input`）与 `#[serde(rename_all = "camelCase")]` 的字段契约。
+2. **二维码导出落盘**：打开 `二维码生成与解码`，内容填 `DEVUTILS-1`、纠错 M、尺寸 256，保存路径填 `/tmp/devutils-qrcode-test.png`，点「导出 PNG」。
 
 ```bash
 ls -l /tmp/devutils-qrcode-test.png && file /tmp/devutils-qrcode-test.png
 ```
 
-Expected：文件存在、大小与界面提示的字节数一致、`file` 识别为 PNG image data。
+Expected：文件存在、大小与界面提示的字节数一致、`file` 识别为 `PNG image data, 256 x 256`。
+
+再用一个**独立解码器**（Node + `pngjs` + `jsqr`，不走应用代码）读回该文件，断言解出的文本是 `DEVUTILS-1`、版本为 1——这证明真机导出的文件本身就是一个可解码的二维码：
+
+```bash
+node -e "const fs=require('fs');const {PNG}=require('pngjs');const j=require('jsqr');const p=PNG.sync.read(fs.readFileSync('/tmp/devutils-qrcode-test.png'));const r=(j.default||j)(new Uint8ClampedArray(p.data),p.width,p.height,{inversionAttempts:'attemptBoth'});console.log(r&&r.data,r&&r.version)"
+```
+
+Expected：输出 `DEVUTILS-1 1`。
+
+> 注意：macOS 上的系统级 UI 自动化工具可能会先把待测 bundle 复制到 `/Applications` 再启动，会覆盖同名的已安装应用；验收后如需恢复正式包，重新跑 `npm run tauri build` 并安装即可。
 
 - [ ] **Step 6: 确认提交历史与工作区状态**
 
