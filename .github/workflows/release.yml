@@ -137,3 +137,32 @@ jobs:
           # 应用未接入 Tauri updater，不生成 latest.json 之类的更新清单
           uploadUpdaterJson: false
           args: ${{ matrix.args }}
+
+      # Windows 免安装版：把原始 exe 直接传到 Release，下载后双击即可运行
+      # （需要系统已安装 WebView2 运行时，Win10/11 默认自带）
+      - name: Upload portable Windows exe
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.number }}
+        run: |
+          EXE="src-tauri/target/release/devutils.exe"
+          if [ ! -f "$EXE" ]; then
+            EXE=$(find src-tauri/target/release -maxdepth 1 -type f -name '*.exe' | head -1)
+          fi
+          if [ -z "$EXE" ] || [ ! -f "$EXE" ]; then
+            echo "::error::未找到免安装 exe，请检查构建产物路径"
+            exit 1
+          fi
+          ASSET="DevUtils_${VERSION}_x64_portable.exe"
+          cp "$EXE" "$ASSET"
+          # Release 由矩阵中先完成的 job 创建，这里等它就绪再上传
+          for _ in $(seq 1 30); do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 10
+          done
+          gh release upload "$TAG" "$ASSET" --clobber

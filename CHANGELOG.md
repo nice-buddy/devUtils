@@ -9,6 +9,20 @@
 >
 > 每个版本建议按「新增 / 变更 / 修复 / 测试」分类归纳，未涉及的分类可以省略。
 
+## v0.1.1
+
+Windows 安装包中文化与发布产物补全。
+
+### 修复
+
+- Windows NSIS 安装包界面改为简体中文（`bundle.windows.nsis.languages = ["SimpChinese"]`）
+- Windows MSI 安装包改为简体中文（`bundle.windows.wix.language = "zh-CN"`），产物名由 `..._en-US.msi` 变为 `..._zh-CN.msi`
+- 修复 NSIS 安装包图标与应用图标不一致的问题：Tauri 仅在配置了 `installerIcon` 时才会给 NSIS 设置 `MUI_ICON`，此前未配置导致安装包使用 NSIS 默认图标；现显式指向 `icons/icon.ico`（安装与卸载图标一并修正）
+
+### 新增
+
+- Release 产物新增 Windows 免安装版 `DevUtils_<版本>_x64_portable.exe`，下载后双击即可运行（需系统已安装 WebView2 运行时，Win10/11 默认自带）
+
 ## v0.1.0
 
 首个正式版本：一个纯本地离线运行、基于 Tauri 2 + Vue 3 的跨平台开发者工具箱，内置 24 个工具。
